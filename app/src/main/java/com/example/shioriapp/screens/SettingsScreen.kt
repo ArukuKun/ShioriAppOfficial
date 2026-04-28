@@ -70,10 +70,18 @@ fun SettingsScreen(
         // --- REPOSITORIOS (Navegación corregida) ---
         SettingsItem(
             icon = Icons.Default.CloudDownload,
-            title = "Repositorios",
+            title = "Extensiones",
             subtitle = "Gestiona las extensiones de mangas",
             onClick = { onNavigateToRepository() }
         )
+
+        SettingsItem(
+            icon = Icons.Default.CloudDownload,
+            title = "Repositorios",
+            subtitle = "Gestiona los repositorios añadidos",
+            onClick = { onNavigateToRepository() }
+        )
+
 
         SettingsItem(
             icon = Icons.Default.Storage,
