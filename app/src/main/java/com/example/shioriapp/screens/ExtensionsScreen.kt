@@ -30,7 +30,6 @@ import coil.compose.AsyncImage
 import com.example.shioriapp.viewmodel.ExtensionViewModel
 import com.example.shioriapp.viewmodel.InstallState
 
-// Enum para manejar el estado visual de las extensiones +18
 enum class NsfwFilterState { SHOW_ALL, ONLY_NSFW, HIDE_NSFW }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -50,27 +49,22 @@ fun ExtensionsScreen(
     var selectedTabIndex by remember { mutableStateOf(0) }
     val tabs = listOf("Todas", "Instaladas", "Actualizaciones")
 
-    // --- NUEVOS ESTADOS PARA FILTROS ---
     var showFilterSheet by remember { mutableStateOf(false) }
     var nsfwFilter by remember { mutableStateOf(NsfwFilterState.SHOW_ALL) }
     var selectedLanguage by remember { mutableStateOf("Todos") }
 
-    // Generamos la lista de idiomas disponibles automáticamente leyendo del JSON
     val availableLanguages = remember(extensions) {
         listOf("Todos") + extensions.map { it.lang.uppercase() }.distinct().sorted()
     }
 
-    // --- LÓGICA DE FILTRADO COMBINADA ---
     val filteredExtensions = remember(filterQuery, extensions, selectedLanguage, nsfwFilter) {
         extensions.filter {
             val nameWithoutTachiyomi = it.name.replace("Tachiyomi: ", "").trim()
             val matchesSearch = nameWithoutTachiyomi.contains(filterQuery, ignoreCase = true) ||
                     it.pkg.contains(filterQuery, ignoreCase = true)
 
-            // Filtro por idioma
             val matchesLang = selectedLanguage == "Todos" || it.lang.uppercase() == selectedLanguage
 
-            // Filtro por contenido explícito
             val matchesNsfw = when (nsfwFilter) {
                 NsfwFilterState.SHOW_ALL -> true
                 NsfwFilterState.ONLY_NSFW -> it.nsfw == 1
@@ -139,7 +133,6 @@ fun ExtensionsScreen(
                     }
                 },
                 actions = {
-                    // --- NUEVO: BOTÓN PARA ABRIR MENÚ DE FILTROS ---
                     IconButton(onClick = { showFilterSheet = true }) {
                         Icon(
                             imageVector = Icons.Default.FilterList,
@@ -244,7 +237,6 @@ fun ExtensionsScreen(
             }
         }
 
-        // --- NUEVO: BOTTOM SHEET DE FILTROS DESLIZABLE ---
         if (showFilterSheet) {
             val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -410,7 +402,7 @@ fun RepositoryExtensionCard(
             Spacer(modifier = Modifier.width(12.dp))
 
             when (selectedTab) {
-                0 -> { // Pestaña: Todas
+                0 -> {
                     val isDownloading = state == InstallState.DOWNLOADING_NEW
                     Button(
                         onClick = onInstallClick,
@@ -452,14 +444,14 @@ fun RepositoryExtensionCard(
                         }
                     }
                 }
-                2 -> { // Pestaña: Actualizaciones
+                2 -> {
                     val isDownloading = state == InstallState.DOWNLOADING_UPDATE
                     Button(
                         onClick = onInstallClick,
                         enabled = !isDownloading,
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFFF9800) // Naranja
+                            containerColor = Color(0xFFFF9800)
                         ),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
                     ) {
