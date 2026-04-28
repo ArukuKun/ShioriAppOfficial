@@ -1,9 +1,10 @@
-package com.example.shioriapp.viewmodels
+package com.example.shioriapp.viewmodel
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shioriapp.core.util.ExtensionLoader
+import com.example.shioriapp.core.util.SourceHolder
 import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.domain.source.Source
 import kotlinx.coroutines.Dispatchers
@@ -13,8 +14,20 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+// NUEVO: Agrupa las extensiones para la pantalla principal
+data class ExtensionGroup(
+    val name: String,
+    val pkgName: String,
+    val lang: String,
+    val sources: List<Source>
+)
+
 class SearchViewModel : ViewModel() {
-    private var sources: List<Source> = emptyList()
+    private var sourceHolders: List<SourceHolder> = emptyList()
+
+    // Estado con las extensiones ya filtradas y agrupadas
+    private val _installedExtensions = MutableStateFlow<List<ExtensionGroup>>(emptyList())
+    val installedExtensions = _installedExtensions.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
@@ -28,10 +41,21 @@ class SearchViewModel : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
 
-    // Carga TODAS las extensiones
     fun initAllSources(context: Context) {
-        if (sources.isEmpty()) {
-            sources = ExtensionLoader.loadAllExtensions(context)
+        if (sourceHolders.isEmpty()) {
+            sourceHolders = ExtensionLoader.loadAllExtensionHolders(context)
+
+            _installedExtensions.value = sourceHolders.groupBy { it.pkgName }
+                .map { (pkg, holders) ->
+                    val first = holders.first().source
+                    ExtensionGroup(
+                        name = first.name,
+                        pkgName = pkg,
+                        // Si el paquete tiene más de 1 fuente, es multi-idioma (ALL)
+                        lang = if (holders.size > 1) "ALL" else first.lang.uppercase(),
+                        sources = holders.map { it.source }
+                    )
+                }
         }
     }
 
@@ -41,8 +65,7 @@ class SearchViewModel : ViewModel() {
 
     fun search() {
         val query = _searchQuery.value
-
-        if (sources.isEmpty()) {
+        if (sourceHolders.isEmpty()) {
             _error.value = "No hay ninguna extensión instalada."
             return
         }
@@ -54,10 +77,11 @@ class SearchViewModel : ViewModel() {
 
         viewModelScope.launch {
             try {
-                val deferredResults = sources.map { source ->
+                // Buscamos en todas las extensiones instaladas
+                val deferredResults = sourceHolders.map { holder ->
                     async(Dispatchers.IO) {
                         try {
-                            source.fetchSearchManga(query, 1)
+                            holder.source.fetchSearchManga(query, 1)
                         } catch (e: Exception) {
                             emptyList()
                         }
@@ -65,22 +89,19 @@ class SearchViewModel : ViewModel() {
                 }
 
                 val allResults = deferredResults.awaitAll().flatten()
-                    .distinctBy {
-                        it.url
-                    }
+                    .distinctBy { it.url } // Elimina mangas duplicados con la misma URL
 
-                        _mangas.value = allResults
+                _mangas.value = allResults
 
-                        if (allResults.isEmpty()) {
-                            _error.value =
-                                "Ninguna de las ${sources.size} extensiones encontró: $query"
-                        }
-                    } catch (e: Exception) {
-                    e.printStackTrace()
-                    _error.value = "Error crítico durante la búsqueda global."
-                } finally {
-                    _isLoading.value = false
+                if (allResults.isEmpty()) {
+                    _error.value = "Ninguna extensión encontró: $query"
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _error.value = "Error crítico durante la búsqueda global."
+            } finally {
+                _isLoading.value = false
             }
         }
     }
+}
