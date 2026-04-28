@@ -107,7 +107,7 @@ fun AppNavigation() {
         ) {
             composable("home") { HomeScreen() }
             composable("explore") { ExploreScreen() }
-            composable("settings") {
+            composable("más") {
                 SettingsScreen(
                     onNavigateToRepository = {
                         navController.navigate("repository")
