@@ -1,10 +1,9 @@
-package com.example.shioriapp.viewmodel
+package com.example.shioriapp.viewmodels
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shioriapp.core.util.ExtensionLoader
-import com.example.shioriapp.core.util.SourceHolder
 import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.domain.source.Source
 import kotlinx.coroutines.Dispatchers
@@ -14,20 +13,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-// NUEVO: Agrupa las extensiones para la pantalla principal
-data class ExtensionGroup(
-    val name: String,
-    val pkgName: String,
-    val lang: String,
-    val sources: List<Source>
-)
-
 class SearchViewModel : ViewModel() {
-    private var sourceHolders: List<SourceHolder> = emptyList()
-
-    // Estado con las extensiones ya filtradas y agrupadas
-    private val _installedExtensions = MutableStateFlow<List<ExtensionGroup>>(emptyList())
-    val installedExtensions = _installedExtensions.asStateFlow()
+    private var sources: List<Source> = emptyList()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
@@ -41,21 +28,10 @@ class SearchViewModel : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
 
+    // Carga TODAS las extensiones
     fun initAllSources(context: Context) {
-        if (sourceHolders.isEmpty()) {
-            sourceHolders = ExtensionLoader.loadAllExtensionHolders(context)
-
-            _installedExtensions.value = sourceHolders.groupBy { it.pkgName }
-                .map { (pkg, holders) ->
-                    val first = holders.first().source
-                    ExtensionGroup(
-                        name = first.name,
-                        pkgName = pkg,
-                        // Si el paquete tiene más de 1 fuente, es multi-idioma (ALL)
-                        lang = if (holders.size > 1) "ALL" else first.lang.uppercase(),
-                        sources = holders.map { it.source }
-                    )
-                }
+        if (sources.isEmpty()) {
+            sources = ExtensionLoader.loadAllExtensions(context)
         }
     }
 
@@ -65,7 +41,8 @@ class SearchViewModel : ViewModel() {
 
     fun search() {
         val query = _searchQuery.value
-        if (sourceHolders.isEmpty()) {
+
+        if (sources.isEmpty()) {
             _error.value = "No hay ninguna extensión instalada."
             return
         }
@@ -77,11 +54,10 @@ class SearchViewModel : ViewModel() {
 
         viewModelScope.launch {
             try {
-                // Buscamos en todas las extensiones instaladas
-                val deferredResults = sourceHolders.map { holder ->
+                val deferredResults = sources.map { source ->
                     async(Dispatchers.IO) {
                         try {
-                            holder.source.fetchSearchManga(query, 1)
+                            source.fetchSearchManga(query, 1)
                         } catch (e: Exception) {
                             emptyList()
                         }
@@ -89,19 +65,22 @@ class SearchViewModel : ViewModel() {
                 }
 
                 val allResults = deferredResults.awaitAll().flatten()
-                    .distinctBy { it.url } // Elimina mangas duplicados con la misma URL
+                    .distinctBy {
+                        it.url
+                    }
 
-                _mangas.value = allResults
+                        _mangas.value = allResults
 
-                if (allResults.isEmpty()) {
-                    _error.value = "Ninguna extensión encontró: $query"
+                        if (allResults.isEmpty()) {
+                            _error.value =
+                                "Ninguna de las ${sources.size} extensiones encontró: $query"
+                        }
+                    } catch (e: Exception) {
+                    e.printStackTrace()
+                    _error.value = "Error crítico durante la búsqueda global."
+                } finally {
+                    _isLoading.value = false
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                _error.value = "Error crítico durante la búsqueda global."
-            } finally {
-                _isLoading.value = false
             }
         }
     }
-}

@@ -3,11 +3,8 @@ package com.example.shioriapp.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -18,21 +15,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
 import com.example.shioriapp.domain.model.MangaInfo
-import com.example.shioriapp.viewmodel.SearchViewModel
+import com.example.shioriapp.viewmodels.SearchViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,12 +34,11 @@ fun ExploreScreen(
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
 
+    // 1. OBSERVAMOS EL ESTADO REAL DEL VIEWMODEL
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.mangas.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
-
-    val installedExtensions by viewModel.installedExtensions.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.initAllSources(context)
@@ -63,7 +54,7 @@ fun ExploreScreen(
         // --- BUSCADOR ---
         OutlinedTextField(
             value = searchQuery,
-            onValueChange = { viewModel.onQueryChange(it) },
+            onValueChange = { viewModel.onQueryChange(it) }, // Usamos el método real
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
@@ -81,57 +72,50 @@ fun ExploreScreen(
             keyboardActions = KeyboardActions(
                 onSearch = {
                     focusManager.clearFocus()
-                    viewModel.search()
+                    viewModel.search() // Usamos el método real
                 }
             )
         )
 
-        // --- GRID DINÁMICO (Resultados y Extensiones) ---
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 110.dp),
+        LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = PaddingValues(bottom = 16.dp)
         ) {
+            item {
+                Text(
+                    text = "Categorías",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
 
-            // --- CATEGORÍAS (Ocupa todo el ancho) ---
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Column {
-                    Text(
-                        text = "Categorías",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    ) {
-                        items(categorias) { categoria ->
-                            SuggestionChip(
-                                onClick = { /* TODO: Filtrar por categoría */ },
-                                label = { Text(categoria) },
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                        }
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(bottom = 24.dp)
+                ) {
+                    items(categorias) { categoria ->
+                        SuggestionChip(
+                            onClick = { /* Filtrar por categoría */ },
+                            label = { Text(categoria) },
+                            shape = RoundedCornerShape(8.dp)
+                        )
                     }
                 }
             }
 
-            // --- LÓGICA DE CONTENIDO ---
+            // --- LÓGICA DE VISUALIZACIÓN DEPENDIENDO DEL VIEWMODEL ---
             when {
                 isLoading -> {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
+                    item {
                         Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                            CircularProgressIndicator()
                         }
                     }
                 }
                 error != null -> {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
+                    item {
                         Text(
                             text = error ?: "Error desconocido",
                             color = MaterialTheme.colorScheme.error,
@@ -140,55 +124,38 @@ fun ExploreScreen(
                     }
                 }
                 searchResults.isNotEmpty() -> {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
+                    item {
                         Text(
                             text = "Resultados de búsqueda",
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(vertical = 8.dp)
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
-
-                    // Renderizamos las carátulas (cada una ocupará 1 celda de la grilla)
                     items(searchResults) { manga ->
-                        MangaCoverCard(manga = manga, onClick = { /* TODO: Navegar a detalles */ })
+                        MangaResultCard(manga = manga, onClick = { /* Navegar a detalles */ })
                     }
                 }
                 else -> {
-                    // Vista por defecto: Extensiones agrupadas
-                    item(span = { GridItemSpan(maxLineSpan) }) {
+                    // Vista por defecto si no hay búsqueda
+                    item {
                         Text(
                             text = "Tus Extensiones",
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp,
                             color = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.padding(vertical = 8.dp)
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
-
-                    if (installedExtensions.isEmpty()) {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            Text(
-                                text = "No hay extensiones instaladas. Ve a 'Más' para buscar en el repositorio.",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                fontSize = 14.sp
-                            )
-                        }
-                    } else {
-                        // Le decimos que cada tarjeta de extensión ocupe el ancho completo de la fila
-                        items(
-                            items = installedExtensions,
-                            span = { GridItemSpan(maxLineSpan) }
-                        ) { extension ->
-                            ExtensionCard(
-                                nombre = extension.name,
-                                idioma = extension.lang,
-                                pkgName = extension.pkgName,
-                                onClick = {
-                                    /* TODO: Navegar a Catálogo de la Extensión */
-                                }
-                            )
+                    item {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            ExtensionCard("TMO (TuMangaOnline)", "ES", "15,000+") {}
+                            ExtensionCard("MangaDex", "Multi", "50,000+") {}
+                            ExtensionCard("YugenMangas", "ES", "3,200+") {}
                         }
                     }
                 }
@@ -197,103 +164,68 @@ fun ExploreScreen(
     }
 }
 
-// --- CARÁTULA DEL MANGA (ESTILO MIHON) ---
 @Composable
-fun MangaCoverCard(manga: MangaInfo, onClick: () -> Unit) {
+fun MangaResultCard(manga: MangaInfo, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(0.7f)
-            .clickable { onClick() },
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            AsyncImage(
-                model = manga.coverUrl,
-                contentDescription = manga.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f)),
-                            startY = 150f
-                        )
-                    )
-            )
-
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(8.dp)
-            ) {
-                Text(
-                    text = manga.title,
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = manga.sourceName,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-        }
-    }
-}
-
-// --- EXTENSIÓN CON ÍCONO REAL DEL SISTEMA ---
-@Composable
-fun ExtensionCard(nombre: String, idioma: String, pkgName: String, onClick: () -> Unit) {
-    val context = LocalContext.current
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
             .clickable { onClick() },
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
         ),
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Obtenemos el Drawable (ícono) oficial de la aplicación desde el PackageManager
-            val icon = remember(pkgName) {
-                try {
-                    context.packageManager.getApplicationIcon(pkgName)
-                } catch (e: Exception) {
-                    null
+            Column {
+                Text(
+                    text = manga.title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (manga.author.isNotBlank()) {
+                    Text(
+                        text = "Autor: ${manga.author}",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
                 }
+                Text(
+                    text = "Origen: ${manga.sourceName}",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
+        }
+    }
+}
 
-            // Coil soporta Drawables nativos maravillosamente
-            AsyncImage(
-                model = icon,
-                contentDescription = "Icono de $nombre",
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-                contentScale = ContentScale.Fit
-            )
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
+@Composable
+fun ExtensionCard(nombre: String, idioma: String, mangas: String, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
                 Text(
                     text = nombre,
                     fontWeight = FontWeight.Bold,
@@ -301,18 +233,14 @@ fun ExtensionCard(nombre: String, idioma: String, pkgName: String, onClick: () -
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = idioma,
+                    text = "Idioma: $idioma",
                     fontSize = 12.sp,
-                    // Destacamos la palabra "ALL" si es multi-idioma
-                    color = if (idioma == "ALL") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    fontWeight = if (idioma == "ALL") FontWeight.Bold else FontWeight.Normal
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
             }
-
             Text(
-                text = "Explorar",
+                text = mangas,
                 fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.primary
             )
         }
