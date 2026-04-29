@@ -17,7 +17,6 @@ import uy.kohesive.injekt.api.InjektModule
 import uy.kohesive.injekt.api.InjektRegistrar
 import uy.kohesive.injekt.api.addSingleton
 
-data class SourceHolder(val source: Source, val pkgName: String)
 object ExtensionLoader {
 
     private var isInjektInitialized = false
@@ -47,33 +46,6 @@ object ExtensionLoader {
             showToast(context, "Error en el escáner: ${e.message}")
         }
         return sources
-    }
-
-    fun loadAllExtensionHolders(context: Context): List<SourceHolder> {
-        val holders = mutableListOf<SourceHolder>()
-        try {
-            val packageManager = context.packageManager
-            val flags = PackageManager.GET_META_DATA
-            val apps = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                packageManager.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(flags.toLong()))
-            } else {
-                packageManager.getInstalledApplications(flags)
-            }
-
-            for (appInfo in apps) {
-                val isExtension = appInfo.packageName.contains("tachiyomi.extension") ||
-                        appInfo.metaData?.containsKey("tachiyomi.extension.class") == true
-
-                if (isExtension) {
-                    val loadedSources = loadExtensionList(context, appInfo.packageName)
-                    // Envolvemos los Sources normales en nuestro Holder con su pkgName
-                    holders.addAll(loadedSources.map { SourceHolder(it, appInfo.packageName) })
-                }
-            }
-        } catch (e: Throwable) {
-            android.util.Log.e("ShioriApp", "Error cargando holders: ${e.message}")
-        }
-        return holders
     }
 
     fun loadExtensionList(context: Context, pkgName: String): List<Source> {

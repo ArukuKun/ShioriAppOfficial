@@ -9,10 +9,14 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,39 +46,39 @@ fun ExploreScreen(
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
 
+    // IMPORTANTE: Estos estados ahora se resolverán correctamente
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.mangas.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
-
     val installedExtensions by viewModel.installedExtensions.collectAsState()
+
+    var selectedManga by remember { mutableStateOf<MangaInfo?>(null) }
+    var selectedCategory by remember { mutableStateOf("Todo") }
+
+    val categorias = listOf("Todo", "Acción", "Aventura", "Comedia", "Drama", "Fantasía", "Terror", "Romance")
 
     LaunchedEffect(Unit) {
         viewModel.initAllSources(context)
     }
-
-    val categorias = listOf("Acción", "Aventura", "Comedia", "Drama", "Fantasía", "Terror", "Romance", "Sci-Fi")
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // --- BUSCADOR ---
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { viewModel.onQueryChange(it) },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            placeholder = { Text("Buscar mangas o extensiones...") },
+            placeholder = { Text("Buscar en extensiones instaladas...") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                focusedLabelColor = MaterialTheme.colorScheme.primary,
-                unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline
             ),
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -86,7 +90,6 @@ fun ExploreScreen(
             )
         )
 
-        // --- GRID DINÁMICO (Resultados y Extensiones) ---
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 110.dp),
             modifier = Modifier.fillMaxSize(),
@@ -94,46 +97,34 @@ fun ExploreScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-
-            // --- CATEGORÍAS (Ocupa todo el ancho) ---
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Column {
-                    Text(
-                        text = "Categorías",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    ) {
-                        items(categorias) { categoria ->
-                            SuggestionChip(
-                                onClick = { /* TODO: Filtrar por categoría */ },
-                                label = { Text(categoria) },
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                        }
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                ) {
+                    items(categorias) { categoria ->
+                        FilterChip(
+                            selected = selectedCategory == categoria,
+                            onClick = { selectedCategory = categoria },
+                            label = { Text(categoria) },
+                            shape = RoundedCornerShape(16.dp)
+                        )
                     }
                 }
             }
 
-            // --- LÓGICA DE CONTENIDO ---
             when {
                 isLoading -> {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                            CircularProgressIndicator()
                         }
                     }
                 }
                 error != null -> {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Text(
-                            text = error ?: "Error desconocido",
+                            text = error ?: "Error",
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(16.dp)
                         )
@@ -141,63 +132,102 @@ fun ExploreScreen(
                 }
                 searchResults.isNotEmpty() -> {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        Text(
-                            text = "Resultados de búsqueda",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
+                        Text("Resultados", fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(vertical = 8.dp))
                     }
-
-                    // Renderizamos las carátulas (cada una ocupará 1 celda de la grilla)
                     items(searchResults) { manga ->
-                        MangaCoverCard(manga = manga, onClick = { /* TODO: Navegar a detalles */ })
+                        MangaCoverCard(manga = manga, onClick = { selectedManga = manga })
                     }
                 }
                 else -> {
-                    // Vista por defecto: Extensiones agrupadas
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        Text(
-                            text = "Tus Extensiones",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
+                        Text("Tus Extensiones", fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(vertical = 8.dp))
                     }
-
-                    if (installedExtensions.isEmpty()) {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            Text(
-                                text = "No hay extensiones instaladas. Ve a 'Más' para buscar en el repositorio.",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                fontSize = 14.sp
-                            )
-                        }
-                    } else {
-                        // Le decimos que cada tarjeta de extensión ocupe el ancho completo de la fila
-                        items(
-                            items = installedExtensions,
-                            span = { GridItemSpan(maxLineSpan) }
-                        ) { extension ->
-                            ExtensionCard(
-                                nombre = extension.name,
-                                idioma = extension.lang,
-                                pkgName = extension.pkgName,
-                                onClick = {
-                                    /* TODO: Navegar a Catálogo de la Extensión */
-                                }
-                            )
-                        }
+                    items(items = installedExtensions, span = { GridItemSpan(maxLineSpan) }) { extension ->
+                        ExtensionCard(
+                            nombre = extension.name,
+                            idioma = extension.lang,
+                            pkgName = extension.pkg, // <-- AQUÍ SE APLICÓ LA CORRECCIÓN
+                            onClick = {}
+                        )
                     }
                 }
             }
         }
     }
+
+    if (selectedManga != null) {
+        ModalBottomSheet(
+            onDismissRequest = { selectedManga = null },
+            containerColor = MaterialTheme.colorScheme.surface,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            MangaDetailContent(
+                manga = selectedManga!!,
+                onReadClick = {
+                    /* TODO: Navegar al lector */
+                    selectedManga = null
+                }
+            )
+        }
+    }
 }
 
-// --- CARÁTULA DEL MANGA (ESTILO MIHON) ---
+@Composable
+fun MangaDetailContent(manga: MangaInfo, onReadClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .verticalScroll(rememberScrollState())
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            AsyncImage(
+                model = manga.coverUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .width(120.dp)
+                    .height(170.dp)
+                    .clip(RoundedCornerShape(8.dp))
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = manga.title, fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 26.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(text = "Autor: ${manga.author.ifEmpty { "Desconocido" }}", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = "Estado: ${if (manga.status == 1) "En emisión" else if (manga.status == 2) "Finalizado" else "Desconocido"}", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = "Fuente: ${manga.sourceName}", fontSize = 14.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(
+                onClick = onReadClick,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Icon(Icons.Default.Book, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Empezar a leer", fontWeight = FontWeight.Bold)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Text("Sinopsis", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Text(
+            text = manga.description.ifEmpty { "No hay descripción disponible para este manga en la fuente seleccionada." },
+            fontSize = 14.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp, bottom = 40.dp)
+        )
+    }
+}
+
+// --- COMPONENTES VISUALES FALTANTES ---
+
 @Composable
 fun MangaCoverCard(manga: MangaInfo, onClick: () -> Unit) {
     Card(
@@ -205,7 +235,8 @@ fun MangaCoverCard(manga: MangaInfo, onClick: () -> Unit) {
             .fillMaxWidth()
             .aspectRatio(0.7f)
             .clickable { onClick() },
-        shape = RoundedCornerShape(8.dp)
+        shape = RoundedCornerShape(8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             AsyncImage(
@@ -214,7 +245,6 @@ fun MangaCoverCard(manga: MangaInfo, onClick: () -> Unit) {
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
-
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -225,7 +255,6 @@ fun MangaCoverCard(manga: MangaInfo, onClick: () -> Unit) {
                         )
                     )
             )
-
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -239,82 +268,37 @@ fun MangaCoverCard(manga: MangaInfo, onClick: () -> Unit) {
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    text = manga.sourceName,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
             }
         }
     }
 }
 
-// --- EXTENSIÓN CON ÍCONO REAL DEL SISTEMA ---
 @Composable
 fun ExtensionCard(nombre: String, idioma: String, pkgName: String, onClick: () -> Unit) {
-    val context = LocalContext.current
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() },
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        ),
-        shape = RoundedCornerShape(12.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(8.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Obtenemos el Drawable (ícono) oficial de la aplicación desde el PackageManager
-            val icon = remember(pkgName) {
-                try {
-                    context.packageManager.getApplicationIcon(pkgName)
-                } catch (e: Exception) {
-                    null
-                }
-            }
-
-            // Coil soporta Drawables nativos maravillosamente
-            AsyncImage(
-                model = icon,
-                contentDescription = "Icono de $nombre",
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-                contentScale = ContentScale.Fit
+            Icon(
+                imageVector = Icons.Default.Extension,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(32.dp)
             )
-
             Spacer(modifier = Modifier.width(16.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = nombre,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = idioma,
-                    fontSize = 12.sp,
-                    // Destacamos la palabra "ALL" si es multi-idioma
-                    color = if (idioma == "ALL") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    fontWeight = if (idioma == "ALL") FontWeight.Bold else FontWeight.Normal
-                )
+            Column {
+                Text(text = nombre, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(text = "Idioma: $idioma", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-
-            Text(
-                text = "Explorar",
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.primary
-            )
         }
     }
 }
