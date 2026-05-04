@@ -56,9 +56,16 @@ object ExtensionLoader {
             try {
                 Injekt.importModule(object : InjektModule {
                     override fun InjektRegistrar.registerInjectables() {
-                        // Le damos a MangaDex exactamente lo que pide
                         addSingleton(context.applicationContext as android.app.Application)
                         addSingleton(eu.kanade.tachiyomi.network.NetworkHelper())
+                        addSingleton(
+                            kotlinx.serialization.json.Json {
+                                ignoreUnknownKeys = true
+                                explicitNulls = false
+                                encodeDefaults = true
+                                isLenient = true
+                            }
+                        )
                     }
                 })
                 isInjektInitialized = true
@@ -66,7 +73,6 @@ object ExtensionLoader {
                 android.util.Log.e("ShioriApp", "Error iniciando Injekt", e)
             }
         }
-        // ------------------------------------------------
 
         try {
             val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -98,20 +104,18 @@ object ExtensionLoader {
                     generatedSources.add(adapter)
                     android.util.Log.d("ShioriApp", "🌍 Fábrica generó: ${adapter.name} (${source.lang})")
                 }
-            }
-            else if (sourceInstance is eu.kanade.tachiyomi.source.Source) {
+            } else if (sourceInstance is eu.kanade.tachiyomi.source.Source) {
                 val adapter = SourceAdapter(sourceInstance, pkgName, packageManager, appInfo)
                 generatedSources.add(adapter)
                 android.util.Log.d("ShioriApp", "📄 Extensión cargada: ${adapter.name} (${sourceInstance.lang})")
-            }
-            else {
+            } else {
                 android.util.Log.w("ShioriApp", "La clase no es ni Source ni SourceFactory")
             }
 
             return generatedSources
 
         } catch (e: Throwable) {
-            android.util.Log.e("ShioriApp", "💀 ERROR GIGANTE AL DESPERTAR EXTENSIÓN:", e)
+            android.util.Log.e("ShioriApp", "💀 ERROR AL CARGAR EXTENSIÓN:", e)
             return emptyList()
         }
     }
@@ -139,9 +143,31 @@ class SourceAdapter(
     override val id: Long
         get() = getPropertyValue("id") as? Long ?: 0L
 
+
+    // Construye un SManga con url y title
+    private fun buildSManga(manga: MangaInfo): Any {
+        val sMangaClass = extensionInstance.javaClass.classLoader!!
+            .loadClass("eu.kanade.tachiyomi.source.model.SManga")
+        val sManga = sMangaClass.getMethod("create").invoke(null)
+        sManga.javaClass.getMethod("setUrl", String::class.java).invoke(sManga, manga.url)
+        sManga.javaClass.getMethod("setTitle", String::class.java).invoke(sManga, manga.title)
+        sManga.javaClass.getMethod("setInitialized", Boolean::class.java).invoke(sManga, true)
+        return sManga
+    }
+
+    // Extrae los campos de un SManga result
+    private fun extractMangaInfo(result: Any, base: MangaInfo): MangaInfo {
+        val rc = result.javaClass
+        return base.copy(
+            description = try { rc.getMethod("getDescription").invoke(result) as? String ?: base.description } catch (e: Exception) { base.description },
+            author      = try { rc.getMethod("getAuthor").invoke(result) as? String ?: base.author } catch (e: Exception) { base.author },
+            coverUrl    = try { rc.getMethod("getThumbnail_url").invoke(result) as? String ?: base.coverUrl } catch (e: Exception) { base.coverUrl },
+            status      = try { rc.getMethod("getStatus").invoke(result) as? Int ?: base.status } catch (e: Exception) { base.status }
+        )
+    }
+
     override suspend fun fetchSearchManga(query: String, page: Int): List<MangaInfo> {
         val mangaList = mutableListOf<MangaInfo>()
-
         try {
             val method = extensionInstance.javaClass.getMethod(
                 "fetchSearchManga",
@@ -149,31 +175,25 @@ class SourceAdapter(
                 String::class.java,
                 eu.kanade.tachiyomi.source.model.FilterList::class.java
             )
-
             val emptyFilters = eu.kanade.tachiyomi.source.model.FilterList(emptyList())
-
             val observable = method.invoke(extensionInstance, page, query, emptyFilters)
 
             if (observable != null) {
-                val toBlockingMethod = observable.javaClass.getMethod("toBlocking")
-                val blockingObservable = toBlockingMethod.invoke(observable)
-                val firstMethod = blockingObservable.javaClass.getMethod("first")
+                val blocking = observable.javaClass.getMethod("toBlocking").invoke(observable)
+                val result = blocking.javaClass.getMethod("first").invoke(blocking)
+                        as? eu.kanade.tachiyomi.source.model.MangasPage
 
-                val result = firstMethod.invoke(blockingObservable) as? eu.kanade.tachiyomi.source.model.MangasPage
-
-                if (result != null) {
-                    for (sManga in result.mangas) {
-                        mangaList.add(
-                            MangaInfo(
-                                title = sManga.title,
-                                url = sManga.url,
-                                coverUrl = sManga.thumbnail_url ?: "",
-                                author = sManga.author ?: "",
-                                status = sManga.status,
-                                sourceName = this.name
-                            )
+                result?.mangas?.forEach { sManga ->
+                    mangaList.add(
+                        MangaInfo(
+                            title      = sManga.title,
+                            url        = sManga.url,
+                            coverUrl   = sManga.thumbnail_url ?: "",
+                            author     = sManga.author ?: "",
+                            status     = sManga.status,
+                            sourceName = this.name
                         )
-                    }
+                    )
                 }
             }
         } catch (e: Throwable) {
@@ -184,38 +204,70 @@ class SourceAdapter(
 
     override suspend fun fetchMangaDetails(manga: MangaInfo): MangaInfo {
         return try {
-            val method = extensionInstance.javaClass.methods
+            val sManga = buildSManga(manga)
+
+            // ── Intento 1: fetchMangaDetails (API vieja, Observable) ────────
+            val fetchMethod = extensionInstance.javaClass.methods
                 .firstOrNull { it.name == "fetchMangaDetails" && it.parameterCount == 1 }
-                ?: return manga
 
-            // Crear SManga usando el classloader de la extensión
-            val sMangaClass = extensionInstance.javaClass.classLoader!!
-                .loadClass("eu.kanade.tachiyomi.source.model.SManga")
-            val createMethod = sMangaClass.getMethod("create")
-            val sManga = createMethod.invoke(null)
-
-            // Setear url y title por reflexión
-            sManga.javaClass.getMethod("setUrl", String::class.java).invoke(sManga, manga.url)
-            sManga.javaClass.getMethod("setTitle", String::class.java).invoke(sManga, manga.title)
-            sManga.javaClass.getMethod("setInitialized", Boolean::class.java).invoke(sManga, true)
-
-            val observable = method.invoke(extensionInstance, sManga)
-            val result = observable?.let {
-                val blocking = it.javaClass.getMethod("toBlocking").invoke(it)
-                blocking.javaClass.getMethod("first").invoke(blocking)
+            if (fetchMethod != null) {
+                android.util.Log.d("SHIORI_DETAIL", "✅ Usando fetchMangaDetails (Observable)")
+                val observable = fetchMethod.invoke(extensionInstance, sManga)
+                val result = observable?.let {
+                    val blocking = it.javaClass.getMethod("toBlocking").invoke(it)
+                    blocking.javaClass.getMethod("first").invoke(blocking)
+                }
+                if (result != null) return extractMangaInfo(result, manga)
             }
 
-            if (result != null) {
-                val rc = result.javaClass
-                manga.copy(
-                    description = try { rc.getMethod("getDescription").invoke(result) as? String ?: manga.description } catch (e: Exception) { manga.description },
-                    author = try { rc.getMethod("getAuthor").invoke(result) as? String ?: manga.author } catch (e: Exception) { manga.author },
-                    coverUrl = try { rc.getMethod("getThumbnail_url").invoke(result) as? String ?: manga.coverUrl } catch (e: Exception) { manga.coverUrl },
-                    status = try { rc.getMethod("getStatus").invoke(result) as? Int ?: manga.status } catch (e: Exception) { manga.status }
-                )
-            } else manga
+            // ── Intento 2: getMangaDetails (API nueva, directo) ─────────────
+            val getMethod = extensionInstance.javaClass.methods
+                .firstOrNull { it.name == "getMangaDetails" && it.parameterCount == 1 }
+
+            if (getMethod != null) {
+                android.util.Log.d("SHIORI_DETAIL", "✅ Usando getMangaDetails (directo)")
+                val result = getMethod.invoke(extensionInstance, sManga)
+                if (result != null) return extractMangaInfo(result, manga)
+            }
+
+            // ── Intento 3: mangaDetailsRequest + HTTP + mangaDetailsParse ───
+            val requestMethod = extensionInstance.javaClass.methods
+                .firstOrNull { it.name == "mangaDetailsRequest" && it.parameterCount == 1 }
+            val parseMethod = extensionInstance.javaClass.methods
+                .firstOrNull { it.name == "mangaDetailsParse" }
+
+            if (requestMethod != null && parseMethod != null) {
+                android.util.Log.d("SHIORI_DETAIL", "✅ Usando mangaDetailsRequest + parse (HTTP)")
+
+                val client = extensionInstance.javaClass.methods
+                    .firstOrNull { it.name == "getClient" }
+                    ?.invoke(extensionInstance) as? okhttp3.OkHttpClient
+
+                if (client != null) {
+                    val request = requestMethod.invoke(extensionInstance, sManga) as? okhttp3.Request
+                    if (request != null) {
+                        val response = client.newCall(request).execute()
+                        android.util.Log.d("SHIORI_DETAIL", "HTTP ${response.code}")
+
+                        val result = try {
+                            // La mayoría recibe Response
+                            parseMethod.invoke(extensionInstance, response)
+                        } catch (e: Exception) {
+                            // Algunos reciben String (el body)
+                            val body = response.peekBody(Long.MAX_VALUE).string()
+                            parseMethod.invoke(extensionInstance, body)
+                        }
+
+                        if (result != null) return extractMangaInfo(result, manga)
+                    }
+                }
+            }
+
+            android.util.Log.e("SHIORI_DETAIL", "❌ Ningún método de detalles funcionó")
+            manga
+
         } catch (e: Throwable) {
-            android.util.Log.e("ShioriApp", "Error fetchMangaDetails", e)
+            android.util.Log.e("SHIORI_DETAIL", "💀 ERROR fetchMangaDetails: ${e.message}", e)
             manga
         }
     }
@@ -226,15 +278,7 @@ class SourceAdapter(
                 .firstOrNull { it.name == "fetchChapterList" && it.parameterCount == 1 }
                 ?: return emptyList()
 
-            val sMangaClass = extensionInstance.javaClass.classLoader!!
-                .loadClass("eu.kanade.tachiyomi.source.model.SManga")
-            val createMethod = sMangaClass.getMethod("create")
-            val sManga = createMethod.invoke(null)
-
-            sManga.javaClass.getMethod("setUrl", String::class.java).invoke(sManga, manga.url)
-            sManga.javaClass.getMethod("setTitle", String::class.java).invoke(sManga, manga.title)
-            sManga.javaClass.getMethod("setInitialized", Boolean::class.java).invoke(sManga, true)
-
+            val sManga = buildSManga(manga)
             val observable = method.invoke(extensionInstance, sManga)
             val result = observable?.let {
                 val blocking = it.javaClass.getMethod("toBlocking").invoke(it)
@@ -248,11 +292,11 @@ class SourceAdapter(
                 try {
                     val c = item.javaClass
                     ChapterInfo(
-                        name = c.getMethod("getName").invoke(item) as? String ?: "",
-                        url = c.getMethod("getUrl").invoke(item) as? String ?: "",
+                        name          = c.getMethod("getName").invoke(item) as? String ?: "",
+                        url           = c.getMethod("getUrl").invoke(item) as? String ?: "",
                         chapterNumber = c.getMethod("getChapter_number").invoke(item) as? Float ?: -1f,
-                        dateUpload = c.getMethod("getDate_upload").invoke(item) as? Long ?: 0L,
-                        scanlator = try { c.getMethod("getScanlator").invoke(item) as? String } catch (e: Exception) { null }
+                        dateUpload    = c.getMethod("getDate_upload").invoke(item) as? Long ?: 0L,
+                        scanlator     = try { c.getMethod("getScanlator").invoke(item) as? String } catch (e: Exception) { null }
                     )
                 } catch (e: Exception) {
                     android.util.Log.e("ShioriApp", "Error mapeando capítulo", e)
@@ -264,6 +308,7 @@ class SourceAdapter(
             emptyList()
         }
     }
+
     override suspend fun fetchPageList(chapter: ChapterInfo): List<PageInfo> {
         return try {
             val method = extensionInstance.javaClass.methods
@@ -272,9 +317,7 @@ class SourceAdapter(
 
             val sChapterClass = extensionInstance.javaClass.classLoader!!
                 .loadClass("eu.kanade.tachiyomi.source.model.SChapter")
-            val createMethod = sChapterClass.getMethod("create")
-            val sChapter = createMethod.invoke(null)
-
+            val sChapter = sChapterClass.getMethod("create").invoke(null)
             sChapter.javaClass.getMethod("setUrl", String::class.java).invoke(sChapter, chapter.url)
             sChapter.javaClass.getMethod("setName", String::class.java).invoke(sChapter, chapter.name)
 
@@ -291,8 +334,8 @@ class SourceAdapter(
                 try {
                     val c = item.javaClass
                     PageInfo(
-                        index = c.getMethod("getIndex").invoke(item) as? Int ?: 0,
-                        url = c.getMethod("getUrl").invoke(item) as? String ?: "",
+                        index    = c.getMethod("getIndex").invoke(item) as? Int ?: 0,
+                        url      = c.getMethod("getUrl").invoke(item) as? String ?: "",
                         imageUrl = try { c.getMethod("getImageUrl").invoke(item) as? String } catch (e: Exception) { null }
                     )
                 } catch (e: Exception) {
@@ -308,7 +351,9 @@ class SourceAdapter(
 
     private fun getPropertyValue(propertyName: String): Any? {
         return try {
-            val method = extensionInstance.javaClass.getMethod("get${propertyName.replaceFirstChar { it.uppercase() }}")
+            val method = extensionInstance.javaClass.getMethod(
+                "get${propertyName.replaceFirstChar { it.uppercase() }}"
+            )
             method.invoke(extensionInstance)
         } catch (e: Exception) {
             null

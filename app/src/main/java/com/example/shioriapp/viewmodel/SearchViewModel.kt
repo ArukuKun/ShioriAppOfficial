@@ -14,20 +14,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-// Agrupa las extensiones para la pantalla principal sin depender de SourceHolder
 data class ExtensionGroup(
     val name: String,
-    val pkg: String, // Usamos 'pkg' para ser compatibles con ExploreScreen
+    val pkg: String,
     val lang: String,
     val sources: List<Source>
 )
 
 class SearchViewModel : ViewModel() {
 
-    // Guardamos directamente los Sources nativos, eliminando el problema de compilación
     private var installedSources: List<Source> = emptyList()
 
-    // Estado con las extensiones ya filtradas y agrupadas
     private val _installedExtensions = MutableStateFlow<List<ExtensionGroup>>(emptyList())
     val installedExtensions: StateFlow<List<ExtensionGroup>> = _installedExtensions.asStateFlow()
 
@@ -45,16 +42,24 @@ class SearchViewModel : ViewModel() {
 
     fun initAllSources(context: Context) {
         if (installedSources.isEmpty()) {
-            // Usamos loadAllExtensions que sí es detectado por el compilador
             installedSources = ExtensionLoader.loadAllExtensions(context)
+
+            val installedPkgs = context.packageManager
+                .getInstalledPackages(0)
+                .map { it.packageName }
+                .filter { it.startsWith("eu.kanade.tachiyomi.extension") }
 
             _installedExtensions.value = installedSources.groupBy { it.name }
                 .map { (name, sourcesList) ->
                     val first = sourcesList.first()
+
+                    val realPkg = installedPkgs.firstOrNull { pkg ->
+                        pkg.contains(name.lowercase().replace(" ", ""), ignoreCase = true)
+                    } ?: "eu.kanade.tachiyomi.extension.${first.lang}.${name.lowercase().replace(" ", "")}"
+
                     ExtensionGroup(
                         name = name,
-                        pkg = "tachiyomi.extension.${name.lowercase().replace(" ", "")}",
-                        // Si hay más de 1 fuente con el mismo nombre, es multi-idioma (ALL)
+                        pkg = realPkg, // ✅ Ahora usa el pkg real
                         lang = if (sourcesList.size > 1) "ALL" else first.lang.uppercase(),
                         sources = sourcesList
                     )
@@ -80,7 +85,6 @@ class SearchViewModel : ViewModel() {
 
         viewModelScope.launch {
             try {
-                // Buscamos en todas las extensiones instaladas concurrentemente
                 val deferredResults = installedSources.map { source ->
                     async(Dispatchers.IO) {
                         try {
@@ -107,4 +111,49 @@ class SearchViewModel : ViewModel() {
             }
         }
     }
+
+    private val _detailManga = MutableStateFlow<MangaInfo?>(null)
+    val detailManga: StateFlow<MangaInfo?> = _detailManga.asStateFlow()
+
+    private val _isLoadingDetail = MutableStateFlow(false)
+    val isLoadingDetail: StateFlow<Boolean> = _isLoadingDetail.asStateFlow()
+
+    fun fetchDetails(manga: MangaInfo) {
+        viewModelScope.launch {
+            _isLoadingDetail.value = true
+            _detailManga.value = manga
+
+            try {
+                val source = installedSources.firstOrNull { it.name == manga.sourceName }
+
+                // 👇 LOG 1: ¿Encuentra la fuente?
+                android.util.Log.d("SHIORI_DETAIL", "Buscando fuente: '${manga.sourceName}'")
+                android.util.Log.d("SHIORI_DETAIL", "Fuentes disponibles: ${installedSources.map { it.name }}")
+
+                if (source != null) {
+                    val detailed = source.fetchMangaDetails(manga)
+
+                    // 👇 LOG 2: ¿Qué devuelve?
+                    android.util.Log.d("SHIORI_DETAIL", "Descripción: '${detailed.description}'")
+                    android.util.Log.d("SHIORI_DETAIL", "Autor: '${detailed.author}'")
+                    android.util.Log.d("SHIORI_DETAIL", "Status: ${detailed.status}")
+
+                    _detailManga.value = detailed
+                } else {
+                    android.util.Log.e("SHIORI_DETAIL", "❌ No encontró la fuente '${manga.sourceName}'")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SHIORI_DETAIL", "❌ Error: ${e.message}", e)
+            } finally {
+                _isLoadingDetail.value = false
+            }
+        }
+    }
+
+    fun clearDetail() {
+        _detailManga.value = null
+    }
+
+
 }
+

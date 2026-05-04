@@ -55,18 +55,17 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.shioriapp.R
-import com.example.shioriapp.screens.ArukuScreen
+import com.example.shioriapp.screens.ShioriAI
 import com.example.shioriapp.screens.ExploreScreen
 import com.example.shioriapp.screens.ExtensionsScreen
 import com.example.shioriapp.screens.HomeScreen
 import com.example.shioriapp.screens.MensajeriaScreen
 import com.example.shioriapp.screens.SettingsScreen
 
-// Rutas centralizadas como constantes (evita errores de typo)
 private object Routes {
     const val HOME       = "home"
     const val EXPLORE    = "explore"
-    const val ARUKU      = "aruku"
+    const val SHIORI     = "shiori"
     const val MENSAJERIA = "mensajeria"
     const val MAS        = "mas"
     const val REPOSITORY = "repository"
@@ -109,7 +108,7 @@ fun AppNavigation() {
                                 )
                             }
                             Routes.EXPLORE    -> Text("Buscar")
-                            Routes.ARUKU      -> Text("Aruku")
+                            Routes.SHIORI     -> Text("ShioriAI")
                             Routes.MENSAJERIA -> Text("Mensajería")
                             else              -> Text("ShioriApp")
                         }
@@ -123,13 +122,11 @@ fun AppNavigation() {
                             Icon(Icons.Default.Search, contentDescription = "Buscar")
                         }
 
-                        // BOX PARA ANCLAR EL MENÚ DE NOTIFICACIONES AL ÍCONO
                         Box {
                             IconButton(onClick = { showNotifications = !showNotifications }) {
                                 Icon(Icons.Default.Notifications, contentDescription = "Notificaciones")
                             }
 
-                            // MENÚ DESPLEGABLE DE NOTIFICACIONES (Mini interfaz testing)
                             DropdownMenu(
                                 expanded = showNotifications,
                                 onDismissRequest = { showNotifications = false },
@@ -198,10 +195,9 @@ fun AppNavigation() {
                         onClick = { navController.navigate(Routes.EXPLORE) }
                     )
 
-                    // 3 · Aruku — botón central sin etiqueta, con cápsula elevada
                     NavigationBarItem(
                         icon = {
-                            val isSelected = currentRoute == Routes.ARUKU
+                            val isSelected = currentRoute == Routes.SHIORI
                             Box(
                                 modifier = Modifier
                                     .size(46.dp)
@@ -225,8 +221,8 @@ fun AppNavigation() {
                             }
                         },
                         label = { },
-                        selected = currentRoute == Routes.ARUKU,
-                        onClick = { navController.navigate(Routes.ARUKU) },
+                        selected = currentRoute == Routes.SHIORI,
+                        onClick = { navController.navigate(Routes.SHIORI) },
                         colors = NavigationBarItemDefaults.colors(
                             indicatorColor = Color.Transparent
                         )
@@ -263,7 +259,7 @@ fun AppNavigation() {
         ) {
             composable(Routes.HOME)       { HomeScreen() }
             composable(Routes.EXPLORE)    { ExploreScreen() }
-            composable(Routes.ARUKU)      { ArukuScreen() }
+            composable(Routes.SHIORI)      { ShioriAI() }
             composable(Routes.MENSAJERIA) { MensajeriaScreen() }
             composable(Routes.MAS) {
                 SettingsScreen(
