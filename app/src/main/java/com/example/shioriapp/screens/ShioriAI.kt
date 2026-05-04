@@ -21,10 +21,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-fun ArukuScreen() {
+fun ShioriAI() {
 
-    // Animación de pulso suave para el ícono central
-    val infiniteTransition = rememberInfiniteTransition(label = "aruku_pulse")
+    val infiniteTransition = rememberInfiniteTransition(label = "shiori_pulse")
     val scale by infiniteTransition.animateFloat(
         initialValue = 0.95f,
         targetValue = 1.05f,
@@ -32,7 +31,7 @@ fun ArukuScreen() {
             animation = tween(durationMillis = 1800, easing = EaseInOutSine),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "aruku_scale"
+        label = "shiori_scale"
     )
 
     Box(
@@ -47,7 +46,6 @@ fun ArukuScreen() {
             modifier = Modifier.padding(horizontal = 40.dp)
         ) {
 
-            // --- ÍCONO CENTRAL ANIMADO ---
             Box(
                 modifier = Modifier
                     .size(110.dp)
@@ -65,21 +63,19 @@ fun ArukuScreen() {
             ) {
                 Icon(
                     imageVector = Icons.Default.AutoAwesome,
-                    contentDescription = "Aruku Bot",
+                    contentDescription = "ShioriAI",
                     tint = Color.White,
                     modifier = Modifier.size(52.dp)
                 )
             }
 
-            // --- NOMBRE ---
             Text(
-                text = "Aruku",
+                text = "ShioriAI",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.onBackground
             )
 
-            // --- DESCRIPCIÓN ---
             Text(
                 text = "Tu asistente de manga inteligente está en desarrollo.",
                 fontSize = 15.sp,
@@ -90,13 +86,12 @@ fun ArukuScreen() {
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // --- BADGE "PRÓXIMAMENTE" ---
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer,
                 shape = RoundedCornerShape(20.dp)
             ) {
                 Text(
-                    text = "✦  Próximamente en Beta 0.8  ✦",
+                    text = "✦  Próximamente en Beta 1.3  ✦",
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -104,7 +99,6 @@ fun ArukuScreen() {
                 )
             }
 
-            // --- FEATURES PREVIEW ---
             Column(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier
@@ -115,7 +109,7 @@ fun ArukuScreen() {
             ) {
                 FeatureRow("Recomendaciones personalizadas de manga")
                 FeatureRow("Resumen de capítulos leídos")
-                FeatureRow("Chat con Aruku Bot sobre tus series")
+                FeatureRow("Chat con ShioriAI sobre tus series")
                 FeatureRow("Análisis de tu actividad de lectura")
             }
         }
