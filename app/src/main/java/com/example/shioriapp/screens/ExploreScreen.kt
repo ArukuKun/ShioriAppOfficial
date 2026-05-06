@@ -55,6 +55,7 @@ fun ExploreScreen(
     val error by viewModel.error.collectAsState()
     val installedExtensions by viewModel.installedExtensions.collectAsState()
 
+    // ── Detalle desde ViewModel ─────────────────────────────────────────
     val detailManga by viewModel.detailManga.collectAsState()
     val isLoadingDetail by viewModel.isLoadingDetail.collectAsState()
 
@@ -176,6 +177,7 @@ fun ExploreScreen(
         }
     }
 
+    // ── Bottom Sheet a pantalla completa ────────────────────────────────
     if (detailManga != null) {
         ModalBottomSheet(
             onDismissRequest = { viewModel.clearDetail() },
@@ -197,6 +199,7 @@ fun ExploreScreen(
     }
 }
 
+// ── Detalle estilo Mihon ─────────────────────────────────────────────────
 @Composable
 fun MangaDetailContent(
     manga: MangaInfo,
@@ -212,11 +215,13 @@ fun MangaDetailContent(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
     ) {
+        // ── HEADER: cover difuminado de fondo ────────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(260.dp)
         ) {
+            // Fondo difuminado
             AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(manga.coverUrl)
@@ -228,11 +233,13 @@ fun MangaDetailContent(
                     .fillMaxSize()
                     .blur(24.dp)
             )
+            // Overlay oscuro
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.55f))
             )
+            // Botón cerrar arriba a la derecha
             TextButton(
                 onClick = onDismiss,
                 modifier = Modifier
@@ -241,6 +248,7 @@ fun MangaDetailContent(
             ) {
                 Text("✕", color = Color.White, fontSize = 18.sp)
             }
+            // Contenido del header: portada + info
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -248,6 +256,7 @@ fun MangaDetailContent(
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // Portada nítida
                 AsyncImage(
                     model = ImageRequest.Builder(context)
                         .data(manga.coverUrl)
@@ -261,6 +270,7 @@ fun MangaDetailContent(
                         .shadow(8.dp, RoundedCornerShape(8.dp))
                         .clip(RoundedCornerShape(8.dp))
                 )
+                // Textos de info
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -276,20 +286,19 @@ fun MangaDetailContent(
                         maxLines = 4,
                         overflow = TextOverflow.Ellipsis
                     )
-
-                    val validAuthor = manga.author.takeIf { !it.isNullOrBlank() && it != "null" }
-                    if (isLoading && validAuthor == null) {
+                    // Autor (shimmer si está cargando)
+                    if (isLoading && manga.author.isEmpty()) {
                         ShimmerBox(width = 0.6f, height = 12.dp)
-                    } else if (validAuthor != null) {
+                    } else if (manga.author.isNotEmpty()) {
                         Text(
-                            text = validAuthor,
+                            text = manga.author,
                             fontSize = 13.sp,
                             color = Color.White.copy(alpha = 0.8f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-
+                    // Estado
                     val (statusText, statusColor) = when (manga.status) {
                         1 -> "En emisión" to Color(0xFF4CAF50)
                         2 -> "Finalizado" to Color(0xFF2196F3)
@@ -311,7 +320,7 @@ fun MangaDetailContent(
                             color = Color.White.copy(alpha = 0.75f)
                         )
                     }
-
+                    // Chip de fuente
                     Surface(
                         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
                         shape = RoundedCornerShape(6.dp)
@@ -328,6 +337,7 @@ fun MangaDetailContent(
             }
         }
 
+        // ── BOTÓN LEER ───────────────────────────────────────────────────
         Button(
             onClick = onReadClick,
             modifier = Modifier
@@ -344,6 +354,7 @@ fun MangaDetailContent(
             Text("Empezar a leer", fontWeight = FontWeight.Bold, fontSize = 15.sp)
         }
 
+        // ── SINOPSIS ─────────────────────────────────────────────────────
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -358,24 +369,25 @@ fun MangaDetailContent(
             Spacer(modifier = Modifier.height(8.dp))
 
             if (isLoading) {
+                // Shimmer de 3 líneas mientras carga
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     ShimmerBox(width = 1f, height = 13.dp)
                     ShimmerBox(width = 1f, height = 13.dp)
                     ShimmerBox(width = 0.65f, height = 13.dp)
                 }
             } else {
-                val validDesc = manga.description.takeIf { !it.isNullOrBlank() && it != "null" }
-                    ?: "No hay descripción disponible para este manga en la fuente seleccionada."
+                val description = manga.description
+                    .ifEmpty { "No hay descripción disponible para este manga." }
 
                 Text(
-                    text = validDesc,
+                    text = description,
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f),
                     lineHeight = 20.sp,
                     maxLines = if (descriptionExpanded) Int.MAX_VALUE else 4,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (validDesc.length > 200) {
+                if (description.length > 200) {
                     Text(
                         text = if (descriptionExpanded) "Ver menos" else "Ver más",
                         fontSize = 12.sp,
@@ -393,6 +405,7 @@ fun MangaDetailContent(
     }
 }
 
+// ── Shimmer placeholder ──────────────────────────────────────────────────
 @Composable
 private fun ShimmerBox(width: Float, height: androidx.compose.ui.unit.Dp) {
     Box(
@@ -404,6 +417,7 @@ private fun ShimmerBox(width: Float, height: androidx.compose.ui.unit.Dp) {
     )
 }
 
+// ── Cover card de resultados ─────────────────────────────────────────────
 @Composable
 fun MangaCoverCard(manga: MangaInfo, onClick: () -> Unit) {
     Card(
@@ -449,6 +463,7 @@ fun MangaCoverCard(manga: MangaInfo, onClick: () -> Unit) {
     }
 }
 
+// ── Card de extensión instalada ──────────────────────────────────────────
 @Composable
 fun ExtensionCard(nombre: String, idioma: String, pkgName: String, onClick: () -> Unit) {
     Card(

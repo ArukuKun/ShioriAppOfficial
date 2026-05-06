@@ -351,39 +351,159 @@ class SourceAdapter(
     }
 
     override suspend fun fetchChapterList(manga: MangaInfo): List<ChapterInfo> {
-        return try {
-            val method = extensionInstance.javaClass.methods
-                .firstOrNull { it.name == "fetchChapterList" && it.parameterCount == 1 }
-                ?: return emptyList()
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val TAG = "SHIORI_CHAPTERS"
+            android.util.Log.e(TAG, "==================================================")
+            android.util.Log.e(TAG, "🔍 INICIANDO EXTRACCIÓN DE CAPÍTULOS PARA: ${manga.title}")
 
-            val sManga = buildSManga(manga)
-            val observable = method.invoke(extensionInstance, sManga)
-            val result = observable?.let {
-                val blocking = it.javaClass.getMethod("toBlocking").invoke(it)
-                blocking.javaClass.getMethod("first").invoke(blocking)
-            } as? List<*>
+            try {
+                val sMangaClass = extensionInstance.javaClass.classLoader!!.loadClass("eu.kanade.tachiyomi.source.model.SMangaImpl")
+                val sManga = sMangaClass.getDeclaredConstructor().newInstance()
+                sManga.javaClass.getMethod("setUrl", String::class.java).invoke(sManga, manga.url)
+                sManga.javaClass.getMethod("setTitle", String::class.java).invoke(sManga, manga.title)
 
-            android.util.Log.d("ShioriApp", "fetchChapterList size: ${result?.size}")
+                val allMethods = extensionInstance.javaClass.methods
+                var resultList: List<*>? = null
 
-            result?.mapNotNull { item ->
-                if (item == null) return@mapNotNull null
-                try {
-                    val c = item.javaClass
-                    ChapterInfo(
-                        name          = c.getMethod("getName").invoke(item) as? String ?: "",
-                        url           = c.getMethod("getUrl").invoke(item) as? String ?: "",
-                        chapterNumber = c.getMethod("getChapter_number").invoke(item) as? Float ?: -1f,
-                        dateUpload    = c.getMethod("getDate_upload").invoke(item) as? Long ?: 0L,
-                        scanlator     = try { c.getMethod("getScanlator").invoke(item) as? String } catch (e: Exception) { null }
-                    )
-                } catch (e: Exception) {
-                    android.util.Log.e("ShioriApp", "Error mapeando capítulo", e)
-                    null
+                // DIAGNÓSTICO
+                val hasGetChapterList = allMethods.any { it.name == "getChapterList" && it.parameterCount == 2 }
+                val hasFetchChapterList = allMethods.any { it.name == "fetchChapterList" && it.parameterCount == 1 }
+                android.util.Log.e(TAG, "🔎 Métodos disponibles en la extensión:")
+                android.util.Log.e(TAG, "   - getChapterList (API Moderna Suspend): $hasGetChapterList")
+                android.util.Log.e(TAG, "   - fetchChapterList (API Vieja RxJava): $hasFetchChapterList")
+
+                // ── Intento A: API Moderna (Suspend) ──
+                if (hasGetChapterList) {
+                    android.util.Log.e(TAG, "▶️ Ejecutando Intento A (Suspend)...")
+                    val getMethod = allMethods.first { it.name == "getChapterList" && it.parameterCount == 2 }
+                    try {
+                        val res = kotlinx.coroutines.suspendCancellableCoroutine<Any?> { continuation ->
+                            try {
+                                val invokeRes = getMethod.invoke(extensionInstance, sManga, continuation)
+                                if (invokeRes !== kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED) {
+                                    continuation.resumeWith(Result.success(invokeRes))
+                                }
+                            } catch (e: Exception) {
+                                continuation.resumeWith(Result.failure(e))
+                            }
+                        }
+                        resultList = res as? List<*>
+                        android.util.Log.e(TAG, "   ✅ Intento A devolvió una lista de tamaño: ${resultList?.size ?: "nulo"}")
+                    } catch (e: Exception) {
+                        android.util.Log.e(TAG, "   ❌ Intento A falló: ${e.message}")
+                    }
                 }
-            } ?: emptyList()
-        } catch (e: Throwable) {
-            android.util.Log.e("ShioriApp", "Error fetchChapterList", e)
-            emptyList()
+
+                // ── Intento B: API Antigua (RxJava) ──
+                if (resultList.isNullOrEmpty() && hasFetchChapterList) {
+                    android.util.Log.e(TAG, "▶️ Ejecutando Intento B (RxJava)...")
+                    val fetchMethod = allMethods.first { it.name == "fetchChapterList" && it.parameterCount == 1 }
+                    try {
+                        val observable = fetchMethod.invoke(extensionInstance, sManga)
+                        if (observable != null) {
+                            val blocking = observable.javaClass.getMethod("toBlocking").invoke(observable)
+                            resultList = blocking.javaClass.getMethod("first").invoke(blocking) as? List<*>
+                            android.util.Log.e(TAG, "   ✅ Intento B devolvió una lista de tamaño: ${resultList?.size ?: "nulo"}")
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e(TAG, "   ❌ Intento B falló: ${e.message}")
+                    }
+                }
+
+                // ── Intento C: MODO SUPERVIVENCIA HTTP ──
+                if (resultList.isNullOrEmpty()) {
+                    android.util.Log.e(TAG, "⚠️ A y B no trajeron capítulos. ▶️ Ejecutando Intento C (HTTP Manual)...")
+                    val parseMethods = findAllMethodsByName(extensionInstance.javaClass, "chapterListParse")
+
+                    if (parseMethods.isNotEmpty()) {
+                        val clientMethod = allMethods.firstOrNull { it.name == "getClient" }
+                        val client = clientMethod?.invoke(extensionInstance) as? okhttp3.OkHttpClient
+
+                        if (client != null) {
+                            var request: okhttp3.Request? = null
+                            val requestMethods = findAllMethodsByName(extensionInstance.javaClass, "chapterListRequest")
+                            val reqMethod = requestMethods.firstOrNull { it.parameterCount == 1 }
+
+                            if (reqMethod != null) {
+                                request = reqMethod.invoke(extensionInstance, sManga) as? okhttp3.Request
+                            } else {
+                                val baseUrlMethod = allMethods.firstOrNull { it.name == "getBaseUrl" }
+                                val baseUrl = baseUrlMethod?.invoke(extensionInstance) as? String
+                                if (baseUrl != null) {
+                                    val fullUrl = if (manga.url.startsWith("http")) manga.url else baseUrl + manga.url
+                                    val headersMethod = allMethods.firstOrNull { it.name == "getHeaders" }
+                                    val headers = headersMethod?.invoke(extensionInstance) as? okhttp3.Headers
+                                    val reqBuilder = okhttp3.Request.Builder().url(fullUrl).get()
+                                    if (headers != null) reqBuilder.headers(headers)
+                                    request = reqBuilder.build()
+                                }
+                            }
+
+                            if (request != null) {
+                                android.util.Log.e(TAG, "   🌐 Petición GET a: ${request.url}")
+                                val response = client.newCall(request).execute()
+                                val bodyString = response.body?.string() ?: ""
+                                android.util.Log.e(TAG, "   📥 HTTP ${response.code} | Longitud HTML: ${bodyString.length}")
+
+                                for (parseMethod in parseMethods) {
+                                    try {
+                                        val paramType = parseMethod.parameterTypes.firstOrNull()?.name ?: ""
+                                        android.util.Log.e(TAG, "   🛠 Probando parseMethod con: $paramType")
+
+                                        var tempResult: Any? = null
+                                        if (paramType.contains("Response")) {
+                                            val newBody = okhttp3.ResponseBody.create(response.body?.contentType(), bodyString)
+                                            val newResponse = response.newBuilder().body(newBody).build()
+                                            tempResult = parseMethod.invoke(extensionInstance, newResponse)
+                                        } else if (paramType.contains("Document")) {
+                                            val document = org.jsoup.Jsoup.parse(bodyString, request.url.toString())
+                                            tempResult = parseMethod.invoke(extensionInstance, document)
+                                        } else {
+                                            tempResult = parseMethod.invoke(extensionInstance, bodyString)
+                                        }
+
+                                        if (tempResult is List<*>) {
+                                            resultList = tempResult
+                                            android.util.Log.e(TAG, "   ✅ Parse exitoso.")
+                                            break
+                                        }
+                                    } catch (e: Exception) {
+                                        android.util.Log.e(TAG, "   ❌ parseMethod falló.")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                val finalChapterList = mutableListOf<ChapterInfo>()
+                if (resultList != null) {
+                    for (item in resultList) {
+                        if (item == null) continue
+                        try {
+                            val c = item.javaClass
+                            finalChapterList.add(
+                                ChapterInfo(
+                                    name = c.getMethod("getName").invoke(item) as? String ?: "Capítulo sin nombre",
+                                    url = c.getMethod("getUrl").invoke(item) as? String ?: "",
+                                    chapterNumber = try { c.getMethod("getChapter_number").invoke(item) as? Float ?: -1f } catch (e: Exception) { -1f },
+                                    dateUpload = try { c.getMethod("getDate_upload").invoke(item) as? Long ?: 0L } catch (e: Exception) { 0L },
+                                    scanlator = try { c.getMethod("getScanlator").invoke(item) as? String } catch (e: Exception) { null }
+                                )
+                            )
+                        } catch (e: Exception) {
+                            android.util.Log.e(TAG, "   ❌ Error mapeando capítulo individual: ${e.message}")
+                        }
+                    }
+                }
+
+                android.util.Log.e(TAG, "🏁 RESULTADO FINAL: ${finalChapterList.size} capítulos listos para la UI.")
+                return@withContext finalChapterList
+
+            } catch (e: Throwable) {
+                android.util.Log.e(TAG, "💀 ERROR FATAL GIGANTE:", e)
+                return@withContext emptyList()
+            }
         }
     }
 
