@@ -476,6 +476,7 @@ class SourceAdapter(
                     }
                 }
 
+                // ── MAPEO DE DATOS A TU INTERFAZ ──
                 val finalChapterList = mutableListOf<ChapterInfo>()
                 if (resultList != null) {
                     for (item in resultList) {

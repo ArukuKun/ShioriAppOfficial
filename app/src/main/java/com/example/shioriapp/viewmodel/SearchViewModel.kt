@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shioriapp.core.util.ExtensionLoader
+import com.example.shioriapp.domain.model.ChapterInfo
 import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.domain.source.Source
 import kotlinx.coroutines.Dispatchers
@@ -96,7 +97,7 @@ class SearchViewModel : ViewModel() {
                 }
 
                 val allResults = deferredResults.awaitAll().flatten()
-                    .distinctBy { it.url } // Elimina mangas duplicados con la misma URL
+                    .distinctBy { it.url }
 
                 _mangas.value = allResults
 
@@ -115,37 +116,45 @@ class SearchViewModel : ViewModel() {
     private val _detailManga = MutableStateFlow<MangaInfo?>(null)
     val detailManga: StateFlow<MangaInfo?> = _detailManga.asStateFlow()
 
+    private val _chapters = MutableStateFlow<List<ChapterInfo>>(emptyList())
+    val chapters: StateFlow<List<ChapterInfo>> = _chapters
+
+    private val _isLoadingChapters = MutableStateFlow(false)
+    val isLoadingChapters: StateFlow<Boolean> = _isLoadingChapters
+
     private val _isLoadingDetail = MutableStateFlow(false)
     val isLoadingDetail: StateFlow<Boolean> = _isLoadingDetail.asStateFlow()
 
-    fun fetchDetails(manga: MangaInfo) {
-        viewModelScope.launch {
+    fun fetchDetails(context: Context, manga: MangaInfo) {
+        viewModelScope.launch(Dispatchers.IO) {
             _isLoadingDetail.value = true
-            _detailManga.value = manga
+            _isLoadingChapters.value = true
+            _chapters.value = emptyList()
 
             try {
-                val source = installedSources.firstOrNull { it.name == manga.sourceName }
+                // 1. Buscamos la información básica de la extensión (ExtensionInfo)
+                val extensionInfo = installedExtensions.value.find { it.name == manga.sourceName }
 
-                // 👇 LOG 1: ¿Encuentra la fuente?
-                android.util.Log.d("SHIORI_DETAIL", "Buscando fuente: '${manga.sourceName}'")
-                android.util.Log.d("SHIORI_DETAIL", "Fuentes disponibles: ${installedSources.map { it.name }}")
+                if (extensionInfo != null) {
+                    // 🔥 2. EL TRUCO: Usamos el ExtensionLoader para cargar el código real (SourceAdapter)
+                    val realSource = ExtensionLoader.loadExtensionList(context, extensionInfo.pkg).firstOrNull()
 
-                if (source != null) {
-                    val detailed = source.fetchMangaDetails(manga)
+                    if (realSource != null) {
+                        // 3. Ahora sí, llamamos a las funciones porque realSource es el adaptador completo
+                        val fullDetails = realSource.fetchMangaDetails(manga)
+                        _detailManga.value = fullDetails
+                        _isLoadingDetail.value = false // Apagamos el shimmer de la sinopsis
 
-                    // 👇 LOG 2: ¿Qué devuelve?
-                    android.util.Log.d("SHIORI_DETAIL", "Descripción: '${detailed.description}'")
-                    android.util.Log.d("SHIORI_DETAIL", "Autor: '${detailed.author}'")
-                    android.util.Log.d("SHIORI_DETAIL", "Status: ${detailed.status}")
-
-                    _detailManga.value = detailed
-                } else {
-                    android.util.Log.e("SHIORI_DETAIL", "❌ No encontró la fuente '${manga.sourceName}'")
+                        // 4. Cargamos los Capítulos
+                        val chapterList = realSource.fetchChapterList(fullDetails)
+                        _chapters.value = chapterList
+                    }
                 }
             } catch (e: Exception) {
-                android.util.Log.e("SHIORI_DETAIL", "❌ Error: ${e.message}", e)
+                e.printStackTrace()
             } finally {
                 _isLoadingDetail.value = false
+                _isLoadingChapters.value = false
             }
         }
     }
