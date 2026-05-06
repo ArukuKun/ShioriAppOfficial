@@ -54,16 +54,11 @@ class SChapterImpl : SChapter {
     override var scanlator: String? = null
 }
 
-// --- 3. RESPUESTA DE BÚSQUEDA ---
-
 data class MangasPage(
     val mangas: List<SManga>,
     val hasNextPage: Boolean
 )
 
-// --- 4. LOS FILTROS (Molde Completo para Extensiones Complejas) ---
-
-// La clase base ahora incluye todas las subclases que las extensiones necesitan para construir su UI.
 sealed class Filter<T>(val name: String, var state: T) {
 
     // Subclases obligatorias para extensiones como MangaDex
@@ -97,7 +92,6 @@ sealed class Filter<T>(val name: String, var state: T) {
     abstract class Group<V>(name: String, state: List<V>) : Filter<List<V>>(name, state)
 }
 
-// Nuestra lista compatible con Collection
 class FilterList(val list: List<Filter<*>>) : List<Filter<*>> {
     constructor(vararg filters: Filter<*>) : this(filters.asList())
 
