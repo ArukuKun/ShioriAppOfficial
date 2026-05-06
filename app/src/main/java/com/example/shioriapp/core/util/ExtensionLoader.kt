@@ -158,11 +158,16 @@ class SourceAdapter(
 
     private fun extractMangaInfo(result: Any, base: MangaInfo): MangaInfo {
         val rc = result.javaClass
+        val newDesc = try { rc.getMethod("getDescription").invoke(result) as? String } catch (e: Exception) { null }
+        val newAuthor = try { rc.getMethod("getAuthor").invoke(result) as? String } catch (e: Exception) { null }
+        val newCover = try { rc.getMethod("getThumbnail_url").invoke(result) as? String } catch (e: Exception) { null }
+        val newStatus = try { rc.getMethod("getStatus").invoke(result) as? Int } catch (e: Exception) { null }
+
         return base.copy(
-            description = try { rc.getMethod("getDescription").invoke(result) as? String ?: base.description } catch (e: Exception) { base.description },
-            author      = try { rc.getMethod("getAuthor").invoke(result) as? String ?: base.author } catch (e: Exception) { base.author },
-            coverUrl    = try { rc.getMethod("getThumbnail_url").invoke(result) as? String ?: base.coverUrl } catch (e: Exception) { base.coverUrl },
-            status      = try { rc.getMethod("getStatus").invoke(result) as? Int ?: base.status } catch (e: Exception) { base.status }
+            description = if (!newDesc.isNullOrBlank()) newDesc else base.description,
+            author = if (!newAuthor.isNullOrBlank()) newAuthor else base.author,
+            coverUrl = if (!newCover.isNullOrBlank()) newCover else base.coverUrl,
+            status = newStatus ?: base.status
         )
     }
 
@@ -220,92 +225,126 @@ class SourceAdapter(
     override suspend fun fetchMangaDetails(manga: MangaInfo): MangaInfo {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val sManga = buildSManga(manga)
+                val sMangaClass = extensionInstance.javaClass.classLoader!!.loadClass("eu.kanade.tachiyomi.source.model.SMangaImpl")
+                val sManga = sMangaClass.getDeclaredConstructor().newInstance()
+                sManga.javaClass.getMethod("setUrl", String::class.java).invoke(sManga, manga.url)
+                sManga.javaClass.getMethod("setTitle", String::class.java).invoke(sManga, manga.title)
 
-                val fetchMethod = findAllMethodsByName(extensionInstance.javaClass, "fetchMangaDetails").firstOrNull()
-                if (fetchMethod != null) {
-                    android.util.Log.d("SHIORI_DETAIL", "✅ Usando fetchMangaDetails (Observable)")
-                    val observable = fetchMethod.invoke(extensionInstance, sManga)
-                    val result = observable?.let {
-                        val blocking = it.javaClass.getMethod("toBlocking").invoke(it)
-                        blocking.javaClass.getMethod("first").invoke(blocking)
-                    }
-                    if (result != null) return@withContext extractMangaInfo(result, manga)
-                }
+                val allMethods = extensionInstance.javaClass.methods
+                var resultDetails: Any? = null
 
-                val getMethod = findAllMethodsByName(extensionInstance.javaClass, "getMangaDetails")
-                    .firstOrNull { it.parameterCount == 2 } // SManga + Continuation
+                // ── Intento A: API Moderna (Suspend) ──
+                val getMethod = allMethods.firstOrNull { it.name == "getMangaDetails" && it.parameterCount == 2 }
                 if (getMethod != null) {
-                    android.util.Log.d("SHIORI_DETAIL", "✅ Usando getMangaDetails (suspend)")
-                    val result = kotlinx.coroutines.suspendCancellableCoroutine<Any?> { continuation ->
-                        try {
-                            val res = getMethod.invoke(extensionInstance, sManga, continuation)
-                            if (res !== kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED) {
-                                continuation.resumeWith(Result.success(res))
+                    try {
+                        kotlinx.coroutines.suspendCancellableCoroutine<Any?> { continuation ->
+                            try {
+                                val res = getMethod.invoke(extensionInstance, sManga, continuation)
+                                if (res !== kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED) {
+                                    continuation.resumeWith(Result.success(res))
+                                }
+                            } catch (e: Exception) {
+                                continuation.resumeWith(Result.failure(e))
                             }
-                        } catch (e: Exception) {
-                            continuation.resumeWith(Result.failure(e))
                         }
-                    }
-                    if (result != null) return@withContext extractMangaInfo(result, manga)
+                        resultDetails = sManga
+                    } catch (e: Exception) {}
                 }
 
-                val requestMethods = findAllMethodsByName(extensionInstance.javaClass, "mangaDetailsRequest")
-                val parseMethods = findAllMethodsByName(extensionInstance.javaClass, "mangaDetailsParse")
+                val tempDescA = try { sManga.javaClass.getMethod("getDescription").invoke(sManga) as? String } catch (e: Exception) { null }
 
-                if (requestMethods.isNotEmpty() && parseMethods.isNotEmpty()) {
-                    android.util.Log.d("SHIORI_DETAIL", "✅ Usando mangaDetailsRequest + parse")
+                // ── Intento B: API Antigua (RxJava) ──
+                if (tempDescA.isNullOrBlank()) {
+                    resultDetails = null
+                    val fetchMethod = allMethods.firstOrNull { it.name == "fetchMangaDetails" && it.parameterCount == 1 }
+                    if (fetchMethod != null) {
+                        try {
+                            val observable = fetchMethod.invoke(extensionInstance, sManga)
+                            if (observable != null) {
+                                val blocking = observable.javaClass.getMethod("toBlocking").invoke(observable)
+                                resultDetails = blocking.javaClass.getMethod("first").invoke(blocking)
+                            }
+                        } catch (e: Exception) {}
+                    }
+                }
 
-                    val clientMethod = findAllMethodsByName(extensionInstance.javaClass, "getClient").firstOrNull()
-                    val client = clientMethod?.invoke(extensionInstance) as? okhttp3.OkHttpClient
+                val tempObjB = resultDetails ?: sManga
+                val tempDescB = try { tempObjB.javaClass.getMethod("getDescription").invoke(tempObjB) as? String } catch (e: Exception) { null }
 
-                    if (client != null) {
-                        val reqMethod = requestMethods.firstOrNull { it.parameterCount == 1 }
-                        val request = reqMethod?.invoke(extensionInstance, sManga) as? okhttp3.Request
+                // ── Intento C: MODO SUPERVIVENCIA HTTP ──
+                if (tempDescB.isNullOrBlank()) {
+                    val parseMethods = findAllMethodsByName(extensionInstance.javaClass, "mangaDetailsParse")
 
-                        if (request != null) {
-                            val response = client.newCall(request).execute()
-                            android.util.Log.d("SHIORI_DETAIL", "HTTP Code: ${response.code}")
+                    if (parseMethods.isNotEmpty()) {
+                        val clientMethod = allMethods.firstOrNull { it.name == "getClient" }
+                        val client = clientMethod?.invoke(extensionInstance) as? okhttp3.OkHttpClient
 
-                            val bodyString = response.body?.string() ?: ""
-                            var result: Any? = null
-                            for (parseMethod in parseMethods) {
-                                val paramName = parseMethod.parameterTypes.firstOrNull()?.name ?: ""
-                                try {
+                        if (client != null) {
+                            var request: okhttp3.Request? = null
+                            val requestMethods = findAllMethodsByName(extensionInstance.javaClass, "mangaDetailsRequest")
+                            val reqMethod = requestMethods.firstOrNull { it.parameterCount == 1 }
 
+                            if (reqMethod != null) {
+                                request = reqMethod.invoke(extensionInstance, sManga) as? okhttp3.Request
+                            } else {
+                                // 🔥 ¡El gran truco! Construimos la petición a mano porque tu app no tiene el método base
+                                val baseUrlMethod = allMethods.firstOrNull { it.name == "getBaseUrl" }
+                                val baseUrl = baseUrlMethod?.invoke(extensionInstance) as? String
 
-                                    if (paramName.contains("Document")) {
-                                        android.util.Log.d("SHIORI_DETAIL", "Parseando con Jsoup Document")
-                                        val document = org.jsoup.Jsoup.parse(bodyString, request.url.toString())
-                                        result = parseMethod.invoke(extensionInstance, document)
-                                        if (result != null) break
+                                if (baseUrl != null) {
+                                    val fullUrl = if (manga.url.startsWith("http")) manga.url else baseUrl + manga.url
+                                    val headersMethod = allMethods.firstOrNull { it.name == "getHeaders" }
+                                    val headers = headersMethod?.invoke(extensionInstance) as? okhttp3.Headers
 
-                                    } else if (paramName.contains("Response")) {
-                                        android.util.Log.d("SHIORI_DETAIL", "Parseando con Response (Reconstruida)")
-                                        val newBody = okhttp3.ResponseBody.create(response.body?.contentType(), bodyString)
-                                        val newResponse = response.newBuilder().body(newBody).build()
-                                        result = parseMethod.invoke(extensionInstance, newResponse)
-                                        if (result != null) break
+                                    val reqBuilder = okhttp3.Request.Builder().url(fullUrl).get()
+                                    if (headers != null) reqBuilder.headers(headers)
 
-                                    } else {
-                                        result = parseMethod.invoke(extensionInstance, bodyString)
-                                        if (result != null) break
-                                    }
-                                } catch (e: Exception) {
-                                    android.util.Log.e("SHIORI_DETAIL", "Fallo al intentar parseMethod con $paramName", e)
+                                    request = reqBuilder.build()
                                 }
                             }
 
-                            if (result != null) return@withContext extractMangaInfo(result, manga)
+                            if (request != null) {
+                                val response = client.newCall(request).execute()
+                                val bodyString = response.body?.string() ?: ""
+
+                                for (parseMethod in parseMethods) {
+                                    try {
+                                        val paramType = parseMethod.parameterTypes.firstOrNull()?.name ?: ""
+                                        var tempResult: Any? = null
+
+                                        if (paramType.contains("Document")) {
+                                            val document = org.jsoup.Jsoup.parse(bodyString, request.url.toString())
+                                            tempResult = parseMethod.invoke(extensionInstance, document)
+                                        } else if (paramType.contains("Response")) {
+                                            val newBody = okhttp3.ResponseBody.create(response.body?.contentType(), bodyString)
+                                            val newResponse = response.newBuilder().body(newBody).build()
+                                            tempResult = parseMethod.invoke(extensionInstance, newResponse)
+                                        } else {
+                                            tempResult = parseMethod.invoke(extensionInstance, bodyString)
+                                        }
+
+                                        if (tempResult != null && tempResult.javaClass.name != "kotlin.Unit") {
+                                            resultDetails = tempResult
+                                            break
+                                        } else {
+                                            val checkDesc = try { sManga.javaClass.getMethod("getDescription").invoke(sManga) as? String } catch (e: Exception) { null }
+                                            if (!checkDesc.isNullOrBlank()) {
+                                                resultDetails = sManga
+                                                break
+                                            }
+                                        }
+                                    } catch (e: Exception) {}
+                                }
+                            }
                         }
                     }
                 }
 
-                android.util.Log.e("SHIORI_DETAIL", "❌ Ningún método funcionó al final.")
-                return@withContext manga
+                // Devolvemos la info limpia
+                val finalObject = resultDetails ?: sManga
+                return@withContext extractMangaInfo(finalObject, manga)
 
             } catch (e: Throwable) {
-                android.util.Log.e("SHIORI_DETAIL", "💀 ERROR fetchMangaDetails: ${e.message}", e)
                 return@withContext manga
             }
         }
