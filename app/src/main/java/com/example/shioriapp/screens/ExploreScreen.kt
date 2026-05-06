@@ -1,5 +1,6 @@
 package com.example.shioriapp.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -10,15 +11,22 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems // <-- ALIAS para evitar conflicto
 import androidx.compose.foundation.lazy.items // <-- Import para la lista de capítulos
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -226,44 +235,58 @@ fun MangaDetailContent(
     val context = LocalContext.current
     var descriptionExpanded by remember { mutableStateOf(false) }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        // ── HEADER ──
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(260.dp)
-            ) {
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(manga.coverUrl)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .blur(24.dp)
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.55f))
-                )
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                ) {
-                    Text("✕", color = Color.White, fontSize = 18.sp)
-                }
+    // Controlador para detectar el scroll
+    val listState = rememberLazyListState()
+
+    // Cálculo dinámico para oscurecer el fondo al hacer scroll
+    val scrollOffset = listState.firstVisibleItemScrollOffset
+    val firstVisibleIndex = listState.firstVisibleItemIndex
+    val overlayAlpha by remember {
+        derivedStateOf {
+            if (firstVisibleIndex > 0) {
+                0.95f // Si ya bajó del primer elemento, casi negro total
+            } else {
+                // Inicia en 0.6f (60% oscuro) y sube a 0.95f según baja el scroll
+                val progress = (scrollOffset / 500f).coerceIn(0f, 1f)
+                0.6f + (0.35f * progress)
+            }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        // 1. FONDO DIFUMINADO GLOBAL (Ocupa toda la pantalla)
+        AsyncImage(
+            model = ImageRequest.Builder(context)
+                .data(manga.coverUrl)
+                .crossfade(true)
+                .build(),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(24.dp)
+        )
+
+        // 2. CAPA NEGRA DINÁMICA
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = overlayAlpha))
+        )
+
+        // 3. CONTENIDO SCROLLEABLE
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 40.dp)
+        ) {
+            // ── HEADER ──
+            item {
                 Row(
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(horizontal = 20.dp, vertical = 20.dp),
+                        .fillMaxWidth()
+                        // Relleno extra arriba para bajar el contenido y separarlo de la barra de estado
+                        .padding(start = 20.dp, end = 20.dp, top = 80.dp, bottom = 20.dp),
                     verticalAlignment = Alignment.Bottom,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
@@ -342,155 +365,217 @@ fun MangaDetailContent(
                     }
                 }
             }
-        }
 
-        // ── BOTÓN LEER ──
-        item {
-            Button(
-                onClick = onReadClick,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 16.dp)
-                    .height(48.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
-            ) {
-                Icon(Icons.Default.Book, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Empezar a leer", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            }
-        }
-
-        // ── SINOPSIS ──
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-            ) {
-                Text(
-                    text = "Sinopsis",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                if (isLoading) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ShimmerBox(width = 1f, height = 13.dp)
-                        ShimmerBox(width = 1f, height = 13.dp)
-                        ShimmerBox(width = 0.65f, height = 13.dp)
-                    }
-                } else {
-                    val description = manga.description
-                        .ifEmpty { "No hay descripción disponible para este manga." }
-
-                    Text(
-                        text = description,
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f),
-                        lineHeight = 20.sp,
-                        maxLines = if (descriptionExpanded) Int.MAX_VALUE else 4,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (description.length > 200) {
-                        Text(
-                            text = if (descriptionExpanded) "Ver menos" else "Ver más",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .padding(top = 6.dp)
-                                .clickable { descriptionExpanded = !descriptionExpanded }
-                        )
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.1f))
-        }
-
-        // ── TÍTULO DE CAPÍTULOS ──
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "${chapters.size} capítulos",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-            }
-        }
-
-        // ── LISTA DE CAPÍTULOS ──
-        if (isLoadingChapters) {
             item {
-                Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    ActionButton(icon = Icons.Default.FavoriteBorder, text = "Añadir") {}
+                    ActionButton(icon = Icons.Default.Share, text = "Compartir") {}
+                    ActionButton(icon = Icons.Default.SwapHoriz, text = "Migrar") {}
+                    ActionButton(icon = Icons.Default.Download, text = "Descargar") {}
                 }
             }
-        } else {
-            items(chapters) { chapter -> // <-- Usamos items normal de LazyColumn
-                ChapterRow(chapter = chapter, onClick = { onChapterClick(chapter) })
+
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                ) {
+                    if (isLoading) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ShimmerBox(width = 1f, height = 13.dp)
+                            ShimmerBox(width = 1f, height = 13.dp)
+                            ShimmerBox(width = 0.65f, height = 13.dp)
+                        }
+                    } else {
+                        val description = manga.description
+                            .ifEmpty { "No hay descripción disponible para este manga." }
+
+                        Text(
+                            text = description,
+                            fontSize = 13.sp,
+                            color = Color.White.copy(alpha = 0.85f),
+                            lineHeight = 20.sp,
+                            maxLines = if (descriptionExpanded) Int.MAX_VALUE else 4,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (description.length > 200) {
+                            Text(
+                                text = if (descriptionExpanded) "Ver menos" else "Ver más",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .padding(top = 6.dp)
+                                    .clickable { descriptionExpanded = !descriptionExpanded }
+                            )
+                        }
+                    }
+                }
             }
-            item { Spacer(modifier = Modifier.height(40.dp)) }
+
+            item {
+                val tagsPlaceholders = listOf("Comedia", "Drama", "Recuentos de la vida", "Romance", "Escolar")
+
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(tagsPlaceholders) { tag ->
+                        Surface(
+                            color = Color.White.copy(alpha = 0.1f),
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
+                        ) {
+                            Text(
+                                text = tag,
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+            }
+
+            // ── TÍTULO DE CAPÍTULOS ──
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${chapters.size} capítulos",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = Color.White
+                    )
+                }
+            }
+
+            // ── LISTA DE CAPÍTULOS ──
+            if (isLoadingChapters) {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+            } else {
+                items(chapters) { chapter ->
+                    ChapterRow(chapter = chapter, onClick = { onChapterClick(chapter) })
+                }
+            }
+        }
+
+        // 4. BOTÓN X CERRAR (Posicionado fijo arriba a la derecha, más abajo)
+        IconButton(
+            onClick = onDismiss,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 48.dp, end = 16.dp) // <- ¡Bajamos el botón aquí!
+                .background(Color.Black.copy(alpha = 0.3f), shape = CircleShape)
+        ) {
+            Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
         }
     }
 }
 
-// ── Diseño individual de cada capítulo ───────────────────────────────────
+// ── Composable auxiliar para los 4 botones ───────────────────────────────
+@Composable
+fun ActionButton(icon: ImageVector, text: String, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clickable { onClick() }
+            .padding(8.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = text,
+            tint = Color.White,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = text,
+            color = Color.White.copy(alpha = 0.8f),
+            fontSize = 12.sp
+        )
+    }
+}
+
+// ── Diseño individual de cada capítulo (Con botón de descarga) ───────────
 @Composable
 fun ChapterRow(chapter: ChapterInfo, onClick: () -> Unit) {
     val dateFormat = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
     val dateString = if (chapter.dateUpload > 0L) dateFormat.format(Date(chapter.dateUpload)) else ""
 
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .padding(horizontal = 20.dp, vertical = 12.dp)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = chapter.name,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onBackground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        // Columna de textos a la izquierda (Ocupa todo el espacio posible)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = chapter.name,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
 
-        Row(
-            modifier = Modifier.padding(top = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Row(
+                modifier = Modifier.padding(top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (dateString.isNotEmpty()) {
+                    Text(
+                        text = dateString,
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.6f)
+                    )
+                }
+                if (!chapter.scanlator.isNullOrBlank()) {
+                    Text(
+                        text = "• ${chapter.scanlator}",
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.6f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+
+        // Botón de descarga a la derecha
+        IconButton(
+            onClick = { /* TODO: Lógica de descarga individual */ },
+            modifier = Modifier.padding(start = 8.dp)
         ) {
-            if (dateString.isNotEmpty()) {
-                Text(
-                    text = dateString,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                )
-            }
-            if (!chapter.scanlator.isNullOrBlank()) {
-                Text(
-                    text = "• ${chapter.scanlator}",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            Icon(
+                imageVector = Icons.Default.Download,
+                contentDescription = "Descargar",
+                tint = Color.White.copy(alpha = 0.7f)
+            )
         }
     }
 }
-
 // ── Shimmer placeholder ──────────────────────────────────────────────────
 @Composable
 private fun ShimmerBox(width: Float, height: androidx.compose.ui.unit.Dp) {

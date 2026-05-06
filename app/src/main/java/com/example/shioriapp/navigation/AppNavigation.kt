@@ -188,13 +188,12 @@ fun AppNavigation() {
                         onClick = { navController.navigate(Routes.EXPLORE) }
                     )
 
-                    // ✅ IA SEMI-OCULTA: Sin bóton saltón y usando un icono discreto
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Default.Assistant, contentDescription = "ShioriAI") },
-                        label = { Text("ShioriAI") },
-                        selected = currentRoute == Routes.SHIORI,
-                        onClick = { navController.navigate(Routes.SHIORI) }
-                    )
+                    //NavigationBarItem(
+                        //icon = { Icon(Icons.Default.Assistant, contentDescription = "ShioriAI") },
+                        //label = { Text("ShioriAI") },
+                        //selected = currentRoute == Routes.SHIORI,
+                    //onClick = { navController.navigate(Routes.SHIORI) }
+                    //)
 
                     NavigationBarItem(
                         icon = { Icon(Icons.Default.ChatBubbleOutline, contentDescription = "Mensajería") },
