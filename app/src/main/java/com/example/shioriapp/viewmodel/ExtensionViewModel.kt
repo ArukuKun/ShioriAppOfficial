@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-// NUEVO: Dividimos DOWNLOADING para saber si es instalación nueva o actualización
 enum class InstallState { IDLE, DOWNLOADING_NEW, DOWNLOADING_UPDATE, INSTALLED, UPDATABLE, ERROR }
 
 class ExtensionViewModel : ViewModel() {
@@ -69,7 +68,6 @@ class ExtensionViewModel : ViewModel() {
 
     fun installExtension(context: Context, extension: ExtensionInfo) {
         viewModelScope.launch {
-            // NUEVO: Revisamos el estado actual para saber qué tipo de descarga es
             val currentState = _installStates.value[extension.pkg]
             val isUpdate = currentState == InstallState.UPDATABLE
 
@@ -80,20 +78,21 @@ class ExtensionViewModel : ViewModel() {
                 ApkDownloader(context).downloadAndInstall(url = url, fileName = extension.pkg)
             } catch (e: Exception) {
                 _errorMessage.value = "Error instalando ${extension.name}: ${e.message}"
-                // En caso de error, refrescamos el estado real para que no quede atascado
                 refreshStates(context)
             }
         }
     }
 
     fun uninstallExtension(context: Context, extension: ExtensionInfo) {
-        val intent = Intent(Intent.ACTION_DELETE).apply {
-            data = Uri.parse("package:${extension.pkg}")
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        try {
+            val intent = Intent(Intent.ACTION_DELETE).apply {
+                data = Uri.parse("package:${extension.pkg}")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            _errorMessage.value = "Fallo al desinstalar. Permisos insuficientes."
         }
-        context.startActivity(intent)
-        // No cambiamos el estado manualmente aquí. Android mostrará el cuadro de diálogo,
-        // y cuando el usuario confirme y se desinstale, el BroadcastReceiver actualizará la lista.
     }
 
     fun clearError() { _errorMessage.value = null }

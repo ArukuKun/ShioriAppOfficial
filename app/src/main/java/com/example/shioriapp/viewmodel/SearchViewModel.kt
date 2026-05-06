@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class ExtensionGroup(
     val name: String,
@@ -59,7 +60,7 @@ class SearchViewModel : ViewModel() {
 
                     ExtensionGroup(
                         name = name,
-                        pkg = realPkg, // ✅ Ahora usa el pkg real
+                        pkg = realPkg,
                         lang = if (sourcesList.size > 1) "ALL" else first.lang.uppercase(),
                         sources = sourcesList
                     )
@@ -72,7 +73,7 @@ class SearchViewModel : ViewModel() {
     }
 
     fun search() {
-        val query = _searchQuery.value
+        val query = _searchQuery.value.trim()
         if (installedSources.isEmpty()) {
             _error.value = "No hay ninguna extensión instalada."
             return
@@ -88,15 +89,17 @@ class SearchViewModel : ViewModel() {
                 val deferredResults = installedSources.map { source ->
                     async(Dispatchers.IO) {
                         try {
-                            source.fetchSearchManga(query, 1)
+                            val results = source.fetchSearchManga(query, 1)
+                            // ✅ EL TRUCO: Forzamos a que cada manga sepa exactamente de qué fuente viene
+                            results.map { it.copy(sourceName = source.name) }
                         } catch (e: Exception) {
-                            emptyList() // Si una falla, no crashea las demás
+                            emptyList<MangaInfo>()
                         }
                     }
                 }
 
                 val allResults = deferredResults.awaitAll().flatten()
-                    .distinctBy { it.url } // Elimina mangas duplicados con la misma URL
+                    .distinctBy { it.url }
 
                 _mangas.value = allResults
 
@@ -124,26 +127,31 @@ class SearchViewModel : ViewModel() {
             _detailManga.value = manga
 
             try {
-                val source = installedSources.firstOrNull { it.name == manga.sourceName }
-
-                // 👇 LOG 1: ¿Encuentra la fuente?
-                android.util.Log.d("SHIORI_DETAIL", "Buscando fuente: '${manga.sourceName}'")
-                android.util.Log.d("SHIORI_DETAIL", "Fuentes disponibles: ${installedSources.map { it.name }}")
+                val source = installedSources.firstOrNull {
+                    it.name.equals(manga.sourceName, ignoreCase = true)
+                }
 
                 if (source != null) {
-                    val detailed = source.fetchMangaDetails(manga)
+                    val detailed = withContext(Dispatchers.IO) {
+                        source.fetchMangaDetails(manga)
+                    }
 
-                    // 👇 LOG 2: ¿Qué devuelve?
-                    android.util.Log.d("SHIORI_DETAIL", "Descripción: '${detailed.description}'")
-                    android.util.Log.d("SHIORI_DETAIL", "Autor: '${detailed.author}'")
-                    android.util.Log.d("SHIORI_DETAIL", "Status: ${detailed.status}")
+                    // ✅ Filtrado para ignorar cuando las extensiones devuelven la palabra "null"
+                    val desc = detailed.description.takeIf { !it.isNullOrBlank() && it.lowercase() != "null" } ?: manga.description
+                    val author = detailed.author.takeIf { !it.isNullOrBlank() && it.lowercase() != "null" } ?: manga.author
+                    val cover = detailed.coverUrl.takeIf { !it.isNullOrBlank() && it.lowercase() != "null" } ?: manga.coverUrl
 
-                    _detailManga.value = detailed
-                } else {
-                    android.util.Log.e("SHIORI_DETAIL", "❌ No encontró la fuente '${manga.sourceName}'")
+                    val updatedManga = manga.copy(
+                        description = desc,
+                        author = author,
+                        status = if (detailed.status != 0) detailed.status else manga.status,
+                        coverUrl = cover
+                    )
+
+                    _detailManga.value = updatedManga
                 }
             } catch (e: Exception) {
-                android.util.Log.e("SHIORI_DETAIL", "❌ Error: ${e.message}", e)
+                e.printStackTrace()
             } finally {
                 _isLoadingDetail.value = false
             }
@@ -153,7 +161,4 @@ class SearchViewModel : ViewModel() {
     fun clearDetail() {
         _detailManga.value = null
     }
-
-
 }
-
