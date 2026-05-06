@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shioriapp.core.util.ExtensionLoader
+import com.example.shioriapp.domain.model.ChapterInfo
 import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.domain.source.Source
 import kotlinx.coroutines.Dispatchers
@@ -13,7 +14,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 data class ExtensionGroup(
     val name: String,
@@ -60,7 +60,7 @@ class SearchViewModel : ViewModel() {
 
                     ExtensionGroup(
                         name = name,
-                        pkg = realPkg,
+                        pkg = realPkg, // ✅ Ahora usa el pkg real
                         lang = if (sourcesList.size > 1) "ALL" else first.lang.uppercase(),
                         sources = sourcesList
                     )
@@ -73,7 +73,7 @@ class SearchViewModel : ViewModel() {
     }
 
     fun search() {
-        val query = _searchQuery.value.trim()
+        val query = _searchQuery.value
         if (installedSources.isEmpty()) {
             _error.value = "No hay ninguna extensión instalada."
             return
@@ -89,11 +89,9 @@ class SearchViewModel : ViewModel() {
                 val deferredResults = installedSources.map { source ->
                     async(Dispatchers.IO) {
                         try {
-                            val results = source.fetchSearchManga(query, 1)
-                            // ✅ EL TRUCO: Forzamos a que cada manga sepa exactamente de qué fuente viene
-                            results.map { it.copy(sourceName = source.name) }
+                            source.fetchSearchManga(query, 1)
                         } catch (e: Exception) {
-                            emptyList<MangaInfo>()
+                            emptyList() // Si una falla, no crashea las demás
                         }
                     }
                 }
@@ -118,42 +116,45 @@ class SearchViewModel : ViewModel() {
     private val _detailManga = MutableStateFlow<MangaInfo?>(null)
     val detailManga: StateFlow<MangaInfo?> = _detailManga.asStateFlow()
 
+    private val _chapters = MutableStateFlow<List<ChapterInfo>>(emptyList())
+    val chapters: StateFlow<List<ChapterInfo>> = _chapters
+
+    private val _isLoadingChapters = MutableStateFlow(false)
+    val isLoadingChapters: StateFlow<Boolean> = _isLoadingChapters
+
     private val _isLoadingDetail = MutableStateFlow(false)
     val isLoadingDetail: StateFlow<Boolean> = _isLoadingDetail.asStateFlow()
 
-    fun fetchDetails(manga: MangaInfo) {
-        viewModelScope.launch {
+    fun fetchDetails(context: Context, manga: MangaInfo) {
+        viewModelScope.launch(Dispatchers.IO) {
             _isLoadingDetail.value = true
-            _detailManga.value = manga
+            _isLoadingChapters.value = true
+            _chapters.value = emptyList()
 
             try {
-                val source = installedSources.firstOrNull {
-                    it.name.equals(manga.sourceName, ignoreCase = true)
-                }
+                // 1. Buscamos la información básica de la extensión (ExtensionInfo)
+                val extensionInfo = installedExtensions.value.find { it.name == manga.sourceName }
 
-                if (source != null) {
-                    val detailed = withContext(Dispatchers.IO) {
-                        source.fetchMangaDetails(manga)
+                if (extensionInfo != null) {
+                    // 🔥 2. EL TRUCO: Usamos el ExtensionLoader para cargar el código real (SourceAdapter)
+                    val realSource = ExtensionLoader.loadExtensionList(context, extensionInfo.pkg).firstOrNull()
+
+                    if (realSource != null) {
+                        // 3. Ahora sí, llamamos a las funciones porque realSource es el adaptador completo
+                        val fullDetails = realSource.fetchMangaDetails(manga)
+                        _detailManga.value = fullDetails
+                        _isLoadingDetail.value = false // Apagamos el shimmer de la sinopsis
+
+                        // 4. Cargamos los Capítulos
+                        val chapterList = realSource.fetchChapterList(fullDetails)
+                        _chapters.value = chapterList
                     }
-
-                    // ✅ Filtrado para ignorar cuando las extensiones devuelven la palabra "null"
-                    val desc = detailed.description.takeIf { !it.isNullOrBlank() && it.lowercase() != "null" } ?: manga.description
-                    val author = detailed.author.takeIf { !it.isNullOrBlank() && it.lowercase() != "null" } ?: manga.author
-                    val cover = detailed.coverUrl.takeIf { !it.isNullOrBlank() && it.lowercase() != "null" } ?: manga.coverUrl
-
-                    val updatedManga = manga.copy(
-                        description = desc,
-                        author = author,
-                        status = if (detailed.status != 0) detailed.status else manga.status,
-                        coverUrl = cover
-                    )
-
-                    _detailManga.value = updatedManga
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
                 _isLoadingDetail.value = false
+                _isLoadingChapters.value = false
             }
         }
     }
@@ -161,4 +162,7 @@ class SearchViewModel : ViewModel() {
     fun clearDetail() {
         _detailManga.value = null
     }
+
+
 }
+
