@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.collections.emptyList
 
 class MangaDetailViewModel : ViewModel() {
@@ -32,18 +33,21 @@ class MangaDetailViewModel : ViewModel() {
     fun init(context: Context, manga: MangaInfo) {
         _manga.value = manga
         val sources = ExtensionLoader.loadAllExtensions(context)
-        source = sources.find { it.name == manga.sourceName }
+        source = sources.find { it.name.trim().equals(manga.sourceName.trim(), ignoreCase = true) }
         loadDetails(manga)
     }
 
     private fun loadDetails(manga: MangaInfo) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             _isLoading.value = true
             try {
-                val details = source?.fetchMangaDetails(manga) ?: manga
-                _manga.value = details
-                val chapterList = source?.fetchChapterList(details) ?: emptyList()
-                _chapters.value = chapterList
+                withContext(Dispatchers.IO) {
+                    val details = source?.fetchMangaDetails(manga) ?: manga
+                    _manga.value = details
+
+                    val chapterList = source?.fetchChapterList(details) ?: emptyList()
+                    _chapters.value = chapterList
+                }
             } catch (e: Exception) {
                 _error.value = "Error al cargar detalles: ${e.message}"
             } finally {
