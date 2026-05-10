@@ -1,43 +1,16 @@
 package com.example.shioriapp.navigation
 
+import android.util.Log
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Assistant
-import androidx.compose.material.icons.filled.ChatBubbleOutline
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.NotificationsOff
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScaffoldDefaults
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -46,197 +19,225 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavController
+import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.example.shioriapp.R
-import com.example.shioriapp.screens.ShioriAI
-import com.example.shioriapp.screens.ExploreScreen
-import com.example.shioriapp.screens.ExtensionsScreen
-import com.example.shioriapp.screens.HomeScreen
-import com.example.shioriapp.screens.MensajeriaScreen
-import com.example.shioriapp.screens.SettingsScreen
+import com.example.shioriapp.screens.*
+import java.net.URLDecoder
+import java.net.URLEncoder
 
-private object Routes {
-    const val HOME       = "home"
-    const val EXPLORE    = "explore"
-    const val SHIORI     = "shiori"
+object Routes {
+    const val MAIN_TABS = "main_tabs"
+    const val HOME = "home"
+    const val EXPLORE = "explore"
     const val MENSAJERIA = "mensajeria"
-    const val MAS        = "mas"
+    const val MAS = "mas"
     const val REPOSITORY = "repository"
+    const val DETAILS = "manga_details/{sourceName}?mangaUrl={mangaUrl}&mangaTitle={mangaTitle}"
+    const val READER = "reader/{sourceName}"
 }
 
-private val routesWithoutTopBar    = setOf(Routes.MAS, Routes.REPOSITORY)
-private val routesWithoutBottomBar = setOf(Routes.REPOSITORY)
+// 🔥 Tu almacén temporal está perfecto
+object ReaderDataCache {
+    var chapters: List<com.example.shioriapp.domain.model.ChapterInfo> = emptyList()
+    var currentChapter: com.example.shioriapp.domain.model.ChapterInfo? = null
+}
+
+@Composable
+fun AppNavigation() {
+    // 🟢 CONTROLADOR 1: El Padre (Maneja las pantallas completas)
+    val rootNavController = rememberNavController()
+
+    NavHost(
+        navController = rootNavController, // 👈 Se asegura de usar root
+        startDestination = Routes.MAIN_TABS,
+        modifier = Modifier.fillMaxSize().background(Color.Black),
+        enterTransition = { slideInHorizontally(tween(300)) { it } + fadeIn(tween(300)) },
+        exitTransition = { fadeOut(tween(300)) },
+        popEnterTransition = { fadeIn(tween(300)) },
+        popExitTransition = { slideOutHorizontally(tween(300)) { it } + fadeOut(tween(300)) }
+    ) {
+        // --- 1. CONTENEDOR DE PESTAÑAS ---
+        composable(Routes.MAIN_TABS) {
+            MainTabsScreen(rootNavController)
+        }
+
+        // --- 2. PANTALLA DE DETALLES ---
+        composable(
+            route = Routes.DETAILS,
+            arguments = listOf(
+                navArgument("sourceName") { type = NavType.StringType },
+                navArgument("mangaUrl") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("mangaTitle") { type = NavType.StringType; nullable = true; defaultValue = "" }
+            )
+        ) { backStackEntry ->
+            val sourceName = URLDecoder.decode(backStackEntry.arguments?.getString("sourceName") ?: "", "UTF-8")
+            val encodedUrl = backStackEntry.arguments?.getString("mangaUrl") ?: ""
+            val encodedTitle = backStackEntry.arguments?.getString("mangaTitle") ?: ""
+
+            val mangaUrl = URLDecoder.decode(encodedUrl, "UTF-8")
+            val mangaTitle = URLDecoder.decode(encodedTitle, "UTF-8")
+
+            MangaDetailsScreen(
+                mangaUrl = mangaUrl,
+                sourceName = sourceName,
+                mangaTitle = mangaTitle,
+                onBack = { rootNavController.popBackStack() },
+                onChapterClick = { chapter, chapters ->
+                    ReaderDataCache.currentChapter = chapter
+                    ReaderDataCache.chapters = chapters
+
+                    val safeSource = if (sourceName.isNotBlank()) sourceName else "FuenteDesconocida"
+                    val encSource = URLEncoder.encode(safeSource, "UTF-8")
+
+                    rootNavController.navigate("reader/$encSource")
+                },
+                onCategoryClick = { tag ->
+                    rootNavController.navigate(Routes.MAIN_TABS) { popUpTo(Routes.MAIN_TABS) { inclusive = false } }
+                }
+            )
+        }
+
+        // --- 3. PANTALLA DEL LECTOR ---
+        composable(
+            route = Routes.READER,
+            arguments = listOf(navArgument("sourceName") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val encSource = backStackEntry.arguments?.getString("sourceName") ?: ""
+            val decodedSource = URLDecoder.decode(encSource, "UTF-8")
+
+            ReaderScreen(
+                sourceName = decodedSource,
+                onBack = { rootNavController.popBackStack() }
+            )
+        }
+
+        // --- 4. PANTALLA DE REPOSITORIOS ---
+        composable(Routes.REPOSITORY) {
+            ExtensionsScreen(onBack = { rootNavController.popBackStack() })
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppNavigation() {
-    val navController = rememberNavController()
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
-
+fun MainTabsScreen(rootNavController: NavHostController) {
+    // 🟢 CONTROLADOR 2: El Hijo (Maneja el interior de las pestañas)
+    val tabsNavController = rememberNavController()
+    val navBackStackEntry by tabsNavController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route ?: Routes.HOME
     var showNotifications by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = if (currentRoute == Routes.REPOSITORY)
-            WindowInsets(0.dp)
-        else
-            ScaffoldDefaults.contentWindowInsets,
-
         topBar = {
-            if (currentRoute !in routesWithoutTopBar) {
-                CenterAlignedTopAppBar(
-                    title = {
-                        when (currentRoute) {
-                            Routes.HOME -> {
-                                val logoRes = if (isSystemInDarkTheme())
-                                    R.drawable.ic_shiori_white
-                                else
-                                    R.drawable.ic_shiori_black
-                                Image(
-                                    painter = painterResource(id = logoRes),
-                                    contentDescription = "Logo de ShioriApp",
-                                    modifier = Modifier.height(40.dp)
-                                )
-                            }
-                            Routes.EXPLORE    -> Text("Buscar")
-                            Routes.SHIORI     -> Text("ShioriAI")
-                            Routes.MENSAJERIA -> Text("Mensajería")
-                            else              -> Text("ShioriApp")
+            CenterAlignedTopAppBar(
+                title = {
+                    when (currentRoute) {
+                        Routes.HOME -> {
+                            val logoRes = if (isSystemInDarkTheme()) R.drawable.ic_shiori_white else R.drawable.ic_shiori_black
+                            Image(painter = painterResource(id = logoRes), contentDescription = null, modifier = Modifier.height(40.dp))
                         }
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = Color.Transparent,
-                        scrolledContainerColor = Color.Transparent
-                    ),
-                    actions = {
-                        IconButton(onClick = { /* TODO: Buscar global */ }) {
-                            Icon(Icons.Default.Search, contentDescription = "Buscar")
-                        }
-
-                        Box {
-                            IconButton(onClick = { showNotifications = !showNotifications }) {
-                                Icon(Icons.Default.Notifications, contentDescription = "Notificaciones")
-                            }
-
-                            DropdownMenu(
-                                expanded = showNotifications,
-                                onDismissRequest = { showNotifications = false },
-                                modifier = Modifier
-                                    .width(280.dp)
-                                    .background(MaterialTheme.colorScheme.surface)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(16.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = "Notificaciones",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                    Spacer(modifier = Modifier.height(24.dp))
-
-                                    Icon(
-                                        imageVector = Icons.Default.NotificationsOff,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
-                                        modifier = Modifier.size(48.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(12.dp))
-
-                                    Text(
-                                        text = "No tienes ninguna notificación por el momento.",
-                                        fontSize = 14.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        textAlign = TextAlign.Center,
-                                        lineHeight = 20.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
+                        Routes.EXPLORE -> Text("Explorar", fontWeight = FontWeight.Bold)
+                        Routes.MENSAJERIA -> Text("Mensajería", fontWeight = FontWeight.Bold)
+                        else -> Text("ShioriApp")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { }) { Icon(Icons.Default.Search, "Buscar") }
+                    IconButton(onClick = { showNotifications = !showNotifications }) {
+                        Icon(Icons.Default.Notifications, "Notificaciones")
+                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
+            )
+        },
+        bottomBar = {
+            NavigationBar(containerColor = Color.Transparent, tonalElevation = 0.dp) {
+                val items = listOf(
+                    Triple(Routes.HOME, Icons.Default.Home, "Biblioteca"),
+                    Triple(Routes.EXPLORE, Icons.Default.Explore, "Explorar"),
+                    Triple(Routes.MENSAJERIA, Icons.Default.ChatBubbleOutline, "Mensajes"),
+                    Triple(Routes.MAS, Icons.Default.MoreHoriz, "Más")
+                )
+                items.forEach { (route, icon, label) ->
+                    NavigationBarItem(
+                        icon = { Icon(icon, contentDescription = label) },
+                        label = { Text(label) },
+                        selected = currentRoute == route,
+                        onClick = {
+                            if (currentRoute != route) {
+                                tabsNavController.navigate(route) {
+                                    popUpTo(Routes.HOME) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
                             }
                         }
-                    }
-                )
-            }
-        },
-
-        bottomBar = {
-            if (currentRoute !in routesWithoutBottomBar) {
-                NavigationBar(
-                    containerColor = Color.Transparent,
-                    tonalElevation = 0.dp
-                ) {
-
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Default.Home, contentDescription = "Biblioteca") },
-                        label = { Text("Biblioteca") },
-                        selected = currentRoute == Routes.HOME,
-                        onClick = { navController.navigate(Routes.HOME) }
-                    )
-
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Default.Search, contentDescription = "Buscar") },
-                        label = { Text("Buscar") },
-                        selected = currentRoute == Routes.EXPLORE,
-                        onClick = { navController.navigate(Routes.EXPLORE) }
-                    )
-
-                    // ✅ IA SEMI-OCULTA: Sin bóton saltón y usando un icono discreto
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Default.Assistant, contentDescription = "ShioriAI") },
-                        label = { Text("ShioriAI") },
-                        selected = currentRoute == Routes.SHIORI,
-                        onClick = { navController.navigate(Routes.SHIORI) }
-                    )
-
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Default.ChatBubbleOutline, contentDescription = "Mensajería") },
-                        label = { Text("Mensajes") },
-                        selected = currentRoute == Routes.MENSAJERIA,
-                        onClick = { navController.navigate(Routes.MENSAJERIA) }
-                    )
-
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Default.MoreHoriz, contentDescription = "Más") },
-                        label = { Text("Más") },
-                        selected = currentRoute == Routes.MAS,
-                        onClick = { navController.navigate(Routes.MAS) }
                     )
                 }
             }
         }
+    ) { innerPadding ->
 
-    ) { paddingValues ->
-
+        // ⚠️ ESTE ERA EL CULPABLE: Ahora usa explícitamente tabsNavController ⚠️
         NavHost(
-            navController = navController,
+            navController = tabsNavController,
             startDestination = Routes.HOME,
-            modifier = if (currentRoute == Routes.REPOSITORY)
-                Modifier.fillMaxSize()
-            else
-                Modifier.padding(paddingValues)
+            modifier = Modifier.padding(innerPadding),
+            enterTransition = { fadeIn(tween(0)) },
+            exitTransition = { fadeOut(tween(0)) }
         ) {
-            composable(Routes.HOME)       { HomeScreen() }
-            composable(Routes.EXPLORE)    { ExploreScreen() }
-            composable(Routes.SHIORI)     { ShioriAI() }
+            composable(Routes.HOME) {
+                HomeScreen(onMangaClick = { manga ->
+                    val encUrl = URLEncoder.encode(manga.url, "UTF-8")
+                    val encTitle = URLEncoder.encode(manga.title, "UTF-8")
+                    val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
+
+                    // Salta al controlador padre para ver a pantalla completa
+                    rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle")
+                })
+            }
+            composable(Routes.EXPLORE) {
+                ExploreScreen(onMangaClick = { url, source, title ->
+                    val encUrl    = URLEncoder.encode(url,    "UTF-8")
+                    val encTitle  = URLEncoder.encode(title,  "UTF-8")
+                    val encSource = URLEncoder.encode(source, "UTF-8")
+
+                    rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle")
+                })
+            }
             composable(Routes.MENSAJERIA) { MensajeriaScreen() }
             composable(Routes.MAS) {
-                SettingsScreen(
-                    onNavigateToRepository = { navController.navigate(Routes.REPOSITORY) }
-                )
+                SettingsScreen(onNavigateToRepository = { rootNavController.navigate(Routes.REPOSITORY) })
             }
-            composable(Routes.REPOSITORY) {
-                ExtensionsScreen(
-                    onBack = { navController.popBackStack() }
-                )
-            }
+        }
+
+        if (showNotifications) {
+            NotificationDropdown(expanded = showNotifications, onDismiss = { showNotifications = false })
+        }
+    }
+}
+
+@Composable
+fun NotificationDropdown(expanded: Boolean, onDismiss: () -> Unit) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        modifier = Modifier.width(280.dp).background(MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Notificaciones", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Spacer(modifier = Modifier.height(24.dp))
+            Icon(Icons.Default.NotificationsOff, null, tint = MaterialTheme.colorScheme.primary.copy(0.6f), modifier = Modifier.size(48.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("No tienes ninguna notificación.", fontSize = 14.sp, textAlign = TextAlign.Center)
         }
     }
 }

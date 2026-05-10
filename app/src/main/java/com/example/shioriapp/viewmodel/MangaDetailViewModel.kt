@@ -1,57 +1,69 @@
-package com.example.shioriapp.viewmodels
+package com.example.shioriapp.viewmodel
 
-import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shioriapp.core.util.ExtensionLoader
-import com.example.shioriapp.domain.model.ChapterInfo
 import com.example.shioriapp.domain.model.MangaInfo
-import com.example.shioriapp.domain.source.Source
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlin.collections.emptyList
+
+data class DetailsState(
+    val manga: MangaInfo? = null,
+    val chapters: List<com.example.shioriapp.domain.model.ChapterInfo> = emptyList(),
+    val isLoading: Boolean = false
+)
 
 class MangaDetailViewModel : ViewModel() {
+    private val _state = MutableStateFlow(DetailsState())
+    val state: StateFlow<DetailsState> = _state.asStateFlow()
 
-    private var source: Source? = null
+    fun loadMangaDetails(url: String, sourceName: String, title: String) {
+        // 👇 Decodifica "Bakaguya+Scanlation" → "Bakaguya Scanlation"
+        val decodedSource = java.net.URLDecoder.decode(sourceName, "UTF-8")
 
-    private val _manga = MutableStateFlow<MangaInfo?>(null)
-    val manga = _manga.asStateFlow()
+        _state.update { it.copy(isLoading = true) }
 
-    private val _chapters = MutableStateFlow<List<ChapterInfo>>(emptyList())
-    val chapters = _chapters.asStateFlow()
-
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading = _isLoading.asStateFlow()
-
-    private val _error = MutableStateFlow<String?>(null)
-    val error = _error.asStateFlow()
-
-    fun init(context: Context, manga: MangaInfo) {
-        _manga.value = manga
-        val sources = ExtensionLoader.loadAllExtensions(context)
-        source = sources.find { it.name.trim().equals(manga.sourceName.trim(), ignoreCase = true) }
-        loadDetails(manga)
-    }
-
-    private fun loadDetails(manga: MangaInfo) {
-        viewModelScope.launch {
-            _isLoading.value = true
+        viewModelScope.launch(Dispatchers.IO) {
             try {
-                withContext(Dispatchers.IO) {
-                    val details = source?.fetchMangaDetails(manga) ?: manga
-                    _manga.value = details
+                Log.d("SHIORI_APP", "Buscando source: '$decodedSource'")
+                val source = ExtensionLoader.getSource(decodedSource)
+                Log.d("SHIORI_APP", "Source encontrado: $source")
 
-                    val chapterList = source?.fetchChapterList(details) ?: emptyList()
-                    _chapters.value = chapterList
+                if (source == null) {
+                    Log.e("SHIORI_APP", "Source es NULL para: '$decodedSource'")
+                    _state.update { it.copy(isLoading = false) }
+                    return@launch
                 }
+
+                val baseManga = MangaInfo(title = title, url = url, coverUrl = "")
+                Log.d("SHIORI_APP", "Iniciando carga para: $title")
+
+                val detailedManga = source.fetchMangaDetails(baseManga)
+                Log.d("SHIORI_APP", "✅ fetchMangaDetails OK: ${detailedManga.title}")
+
+                val mangaFinal = if (detailedManga.title.isBlank() || detailedManga.title == "Manga") {
+                    detailedManga.copy(title = title)
+                } else {
+                    detailedManga
+                }
+
+                val chapterList = source.fetchChapterList(mangaFinal)
+                Log.d("SHIORI_APP", "✅ fetchChapterList OK: ${chapterList.size} caps")
+
+                _state.update { it.copy(
+                    manga = mangaFinal,
+                    chapters = chapterList,
+                    isLoading = false
+                ) }
+
             } catch (e: Exception) {
-                _error.value = "Error al cargar detalles: ${e.message}"
-            } finally {
-                _isLoading.value = false
+                Log.e("SHIORI_APP", "Error en ViewModel: ${e.message}")
+                _state.update { it.copy(isLoading = false) }
             }
         }
     }
