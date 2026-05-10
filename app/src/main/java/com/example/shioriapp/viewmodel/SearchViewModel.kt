@@ -10,6 +10,7 @@ import com.example.shioriapp.domain.source.Source
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -126,29 +127,31 @@ class SearchViewModel : ViewModel() {
     val isLoadingDetail: StateFlow<Boolean> = _isLoadingDetail.asStateFlow()
 
     fun fetchDetails(context: Context, manga: MangaInfo) {
+        // Mostramos la UI de inmediato para quitar el delay visual
+        _detailManga.value = manga
+        _isLoadingDetail.value = true
+        _isLoadingChapters.value = true
+        _chapters.value = emptyList()
+
         viewModelScope.launch(Dispatchers.IO) {
-            _isLoadingDetail.value = true
-            _isLoadingChapters.value = true
-            _chapters.value = emptyList()
-
             try {
-                // 1. Buscamos la información básica de la extensión (ExtensionInfo)
-                val extensionInfo = installedExtensions.value.find { it.name == manga.sourceName }
+                // 🔥 Sacamos la extensión directa de la bóveda usando su nombre
+                val realSource = ExtensionLoader.getSource(manga.sourceName)
 
-                if (extensionInfo != null) {
-                    // 🔥 2. EL TRUCO: Usamos el ExtensionLoader para cargar el código real (SourceAdapter)
-                    val realSource = ExtensionLoader.loadExtensionList(context, extensionInfo.pkg).firstOrNull()
+                if (realSource != null) {
+                    // Peticiones en paralelo para que cargue el doble de rápido
+                    kotlinx.coroutines.coroutineScope {
+                        val detailsDeferred = async { realSource.fetchMangaDetails(manga) }
+                        val chaptersDeferred = async { realSource.fetchChapterList(manga) }
 
-                    if (realSource != null) {
-                        // 3. Ahora sí, llamamos a las funciones porque realSource es el adaptador completo
-                        val fullDetails = realSource.fetchMangaDetails(manga)
+                        val fullDetails = detailsDeferred.await()
+                        val chapterList = chaptersDeferred.await()
+
                         _detailManga.value = fullDetails
-                        _isLoadingDetail.value = false // Apagamos el shimmer de la sinopsis
-
-                        // 4. Cargamos los Capítulos
-                        val chapterList = realSource.fetchChapterList(fullDetails)
                         _chapters.value = chapterList
                     }
+                } else {
+                    android.util.Log.e("SHIORI_ERROR", "La fuente ${manga.sourceName} no estaba en caché.")
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -161,6 +164,17 @@ class SearchViewModel : ViewModel() {
 
     fun clearDetail() {
         _detailManga.value = null
+    }
+
+    private val _readingChapter = MutableStateFlow<ChapterInfo?>(null)
+    val readingChapter: StateFlow<ChapterInfo?> = _readingChapter
+
+    fun openReader(chapter: ChapterInfo) {
+        _readingChapter.value = chapter
+    }
+
+    fun closeReader() {
+        _readingChapter.value = null
     }
 
 

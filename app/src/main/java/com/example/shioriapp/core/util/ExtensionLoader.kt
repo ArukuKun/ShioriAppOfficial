@@ -1,5 +1,6 @@
 package com.example.shioriapp.core.util
 
+import android.content.ContentValues.TAG
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -21,6 +22,14 @@ object ExtensionLoader {
 
     private var isInjektInitialized = false
 
+    // 🔥 LA BÓVEDA: Guardamos las extensiones por su nombre (ej: "Manhwa Scan")
+    private val activeSources = mutableMapOf<String, Source>()
+
+    // Función súper rápida para obtener la extensión sin usar el PackageManager
+    fun getSource(sourceName: String): Source? {
+        return activeSources[sourceName]
+    }
+
     fun loadAllExtensions(context: Context): List<Source> {
         val sources = mutableListOf<Source>()
         try {
@@ -40,6 +49,11 @@ object ExtensionLoader {
                 if (isExtension) {
                     val loadedSources = loadExtensionList(context, appInfo.packageName)
                     sources.addAll(loadedSources)
+
+                    // 🔥 GUARDAMOS LA EXTENSIÓN EN LA BÓVEDA AL INSTANTE
+                    loadedSources.forEach { source ->
+                        activeSources[source.name] = source
+                    }
                 }
             }
         } catch (e: Throwable) {
@@ -125,6 +139,10 @@ object ExtensionLoader {
             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
         }
     }
+
+    fun getAvailableSources(): List<String> {
+        return activeSources.keys.toList()
+    }
 }
 
 class SourceAdapter(
@@ -158,16 +176,18 @@ class SourceAdapter(
 
     private fun extractMangaInfo(result: Any, base: MangaInfo): MangaInfo {
         val rc = result.javaClass
-        val newDesc = try { rc.getMethod("getDescription").invoke(result) as? String } catch (e: Exception) { null }
+        val newTitle  = try { rc.getMethod("getTitle").invoke(result) as? String } catch (e: Exception) { null }  // 👈
+        val newDesc   = try { rc.getMethod("getDescription").invoke(result) as? String } catch (e: Exception) { null }
         val newAuthor = try { rc.getMethod("getAuthor").invoke(result) as? String } catch (e: Exception) { null }
-        val newCover = try { rc.getMethod("getThumbnail_url").invoke(result) as? String } catch (e: Exception) { null }
+        val newCover  = try { rc.getMethod("getThumbnail_url").invoke(result) as? String } catch (e: Exception) { null }
         val newStatus = try { rc.getMethod("getStatus").invoke(result) as? Int } catch (e: Exception) { null }
 
         return base.copy(
+            title       = if (!newTitle.isNullOrBlank() && newTitle != "Manga") newTitle else base.title,  // 👈
             description = if (!newDesc.isNullOrBlank()) newDesc else base.description,
-            author = if (!newAuthor.isNullOrBlank()) newAuthor else base.author,
-            coverUrl = if (!newCover.isNullOrBlank()) newCover else base.coverUrl,
-            status = newStatus ?: base.status
+            author      = if (!newAuthor.isNullOrBlank()) newAuthor else base.author,
+            coverUrl    = if (!newCover.isNullOrBlank()) newCover else base.coverUrl,
+            status      = newStatus ?: base.status
         )
     }
 
@@ -189,6 +209,7 @@ class SourceAdapter(
                         as? eu.kanade.tachiyomi.source.model.MangasPage
 
                 result?.mangas?.forEach { sManga ->
+                    android.util.Log.d(TAG, "📦 Recibido de extensión -> Título: ${sManga.title} | Géneros: ${sManga.genre}")
                     mangaList.add(
                         MangaInfo(
                             title      = sManga.title,
@@ -196,7 +217,8 @@ class SourceAdapter(
                             coverUrl   = sManga.thumbnail_url ?: "",
                             author     = sManga.author ?: "",
                             status     = sManga.status,
-                            sourceName = this.name
+                            sourceName = this.name,
+                            genres     = sManga.genre ?: ""
                         )
                     )
                 }
@@ -467,8 +489,12 @@ class SourceAdapter(
                                             android.util.Log.e(TAG, "   ✅ Parse exitoso.")
                                             break
                                         }
+                                        // 🔥 AQUÍ ESTÁ LA MAGIA PARA VER EL ERROR REAL:
+                                    } catch (e: java.lang.reflect.InvocationTargetException) {
+                                        android.util.Log.e(TAG, "   ❌ parseMethod falló internamente: ${e.targetException}")
+                                        e.targetException?.printStackTrace()
                                     } catch (e: Exception) {
-                                        android.util.Log.e(TAG, "   ❌ parseMethod falló.")
+                                        android.util.Log.e(TAG, "   ❌ parseMethod falló por otro motivo: ${e.message}")
                                     }
                                 }
                             }
@@ -509,43 +535,153 @@ class SourceAdapter(
     }
 
     override suspend fun fetchPageList(chapter: ChapterInfo): List<PageInfo> {
-        return try {
-            val method = extensionInstance.javaClass.methods
-                .firstOrNull { it.name == "fetchPageList" && it.parameterCount == 1 }
-                ?: return emptyList()
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val TAG = "SHIORI_PAGES"
+            android.util.Log.e(TAG, "==================================================")
+            android.util.Log.e(TAG, "🔍 INICIANDO EXTRACCIÓN DE PÁGINAS PARA: ${chapter.name}")
 
-            val sChapterClass = extensionInstance.javaClass.classLoader!!
-                .loadClass("eu.kanade.tachiyomi.source.model.SChapterImpl")
-            val sChapter = sChapterClass.getDeclaredConstructor().newInstance()
+            try {
+                // 1. Creamos el SChapter
+                val sChapterClass = extensionInstance.javaClass.classLoader!!.loadClass("eu.kanade.tachiyomi.source.model.SChapterImpl")
+                val sChapter = sChapterClass.getDeclaredConstructor().newInstance()
+                sChapter.javaClass.getMethod("setUrl", String::class.java).invoke(sChapter, chapter.url)
+                sChapter.javaClass.getMethod("setName", String::class.java).invoke(sChapter, chapter.name)
 
-            sChapter.javaClass.getMethod("setUrl", String::class.java).invoke(sChapter, chapter.url)
-            sChapter.javaClass.getMethod("setName", String::class.java).invoke(sChapter, chapter.name)
+                val allMethods = extensionInstance.javaClass.methods
+                var resultList: List<*>? = null
 
-            val observable = method.invoke(extensionInstance, sChapter)
-            val result = observable?.let {
-                val blocking = it.javaClass.getMethod("toBlocking").invoke(it)
-                blocking.javaClass.getMethod("first").invoke(blocking)
-            } as? List<*>
+                val hasGetPageList = allMethods.any { it.name == "getPageList" && it.parameterCount == 2 }
+                val hasFetchPageList = allMethods.any { it.name == "fetchPageList" && it.parameterCount == 1 }
 
-            android.util.Log.d("ShioriApp", "fetchPageList size: ${result?.size}")
-
-            result?.mapNotNull { item ->
-                if (item == null) return@mapNotNull null
-                try {
-                    val c = item.javaClass
-                    PageInfo(
-                        index    = c.getMethod("getIndex").invoke(item) as? Int ?: 0,
-                        url      = c.getMethod("getUrl").invoke(item) as? String ?: "",
-                        imageUrl = try { c.getMethod("getImageUrl").invoke(item) as? String } catch (e: Exception) { null }
-                    )
-                } catch (e: Exception) {
-                    android.util.Log.e("ShioriApp", "Error mapeando página", e)
-                    null
+                // ── Intento A: API Moderna (Suspend) ──
+                if (hasGetPageList) {
+                    android.util.Log.e(TAG, "▶️ Ejecutando Intento A (Suspend)...")
+                    val getMethod = allMethods.first { it.name == "getPageList" && it.parameterCount == 2 }
+                    try {
+                        val res = kotlinx.coroutines.suspendCancellableCoroutine<Any?> { continuation ->
+                            try {
+                                val invokeRes = getMethod.invoke(extensionInstance, sChapter, continuation)
+                                if (invokeRes !== kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED) {
+                                    continuation.resumeWith(Result.success(invokeRes))
+                                }
+                            } catch (e: Exception) {
+                                continuation.resumeWith(Result.failure(e))
+                            }
+                        }
+                        resultList = res as? List<*>
+                    } catch (e: Exception) {
+                        android.util.Log.e(TAG, "   ❌ Intento A falló: ${e.message}")
+                    }
                 }
-            } ?: emptyList()
-        } catch (e: Throwable) {
-            android.util.Log.e("ShioriApp", "Error fetchPageList", e)
-            emptyList()
+
+                // ── Intento B: API Antigua (RxJava) ──
+                if (resultList.isNullOrEmpty() && hasFetchPageList) {
+                    android.util.Log.e(TAG, "▶️ Ejecutando Intento B (RxJava)...")
+                    val fetchMethod = allMethods.first { it.name == "fetchPageList" && it.parameterCount == 1 }
+                    try {
+                        val observable = fetchMethod.invoke(extensionInstance, sChapter)
+                        if (observable != null) {
+                            val blocking = observable.javaClass.getMethod("toBlocking").invoke(observable)
+                            resultList = blocking.javaClass.getMethod("first").invoke(blocking) as? List<*>
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e(TAG, "   ❌ Intento B falló: ${e.message}")
+                    }
+                }
+
+                // 🔥 ── Intento C: MODO SUPERVIVENCIA HTTP (El que faltaba) ──
+                if (resultList.isNullOrEmpty()) {
+                    android.util.Log.e(TAG, "⚠️ A y B fallaron. ▶️ Ejecutando Intento C (HTTP Manual)...")
+                    val parseMethods = findAllMethodsByName(extensionInstance.javaClass, "pageListParse")
+
+                    if (parseMethods.isNotEmpty()) {
+                        val clientMethod = allMethods.firstOrNull { it.name == "getClient" }
+                        val client = clientMethod?.invoke(extensionInstance) as? okhttp3.OkHttpClient
+
+                        if (client != null) {
+                            var request: okhttp3.Request? = null
+                            val requestMethods = findAllMethodsByName(extensionInstance.javaClass, "pageListRequest")
+                            val reqMethod = requestMethods.firstOrNull { it.parameterCount == 1 }
+
+                            if (reqMethod != null) {
+                                request = reqMethod.invoke(extensionInstance, sChapter) as? okhttp3.Request
+                            } else {
+                                val baseUrlMethod = allMethods.firstOrNull { it.name == "getBaseUrl" }
+                                val baseUrl = baseUrlMethod?.invoke(extensionInstance) as? String
+                                if (baseUrl != null) {
+                                    val fullUrl = if (chapter.url.startsWith("http")) chapter.url else baseUrl + chapter.url
+                                    val headersMethod = allMethods.firstOrNull { it.name == "getHeaders" }
+                                    val headers = headersMethod?.invoke(extensionInstance) as? okhttp3.Headers
+                                    val reqBuilder = okhttp3.Request.Builder().url(fullUrl).get()
+                                    if (headers != null) reqBuilder.headers(headers)
+                                    request = reqBuilder.build()
+                                }
+                            }
+
+                            if (request != null) {
+                                android.util.Log.e(TAG, "   🌐 Petición GET a: ${request.url}")
+                                val response = client.newCall(request).execute()
+                                val bodyString = response.body?.string() ?: ""
+                                android.util.Log.e(TAG, "   📥 HTTP ${response.code} | Longitud HTML: ${bodyString.length}")
+
+                                for (parseMethod in parseMethods) {
+                                    try {
+                                        var tempResult: Any? = null
+                                        val paramType = parseMethod.parameterTypes.firstOrNull()?.name ?: ""
+                                        android.util.Log.e(TAG, "   🛠 Probando pageListParse con: $paramType")
+
+                                        if (paramType.contains("Response")) {
+                                            val newBody = okhttp3.ResponseBody.create(response.body?.contentType(), bodyString)
+                                            val newResponse = response.newBuilder().body(newBody).build()
+                                            tempResult = parseMethod.invoke(extensionInstance, newResponse)
+                                        } else if (paramType.contains("Document")) {
+                                            val document = org.jsoup.Jsoup.parse(bodyString, request.url.toString())
+                                            tempResult = parseMethod.invoke(extensionInstance, document)
+                                        }
+                                        if (tempResult is List<*>) {
+                                            resultList = tempResult
+                                            android.util.Log.e(TAG, "   ✅ Parse C exitoso.")
+                                            break
+                                        }
+                                    } catch (e: java.lang.reflect.InvocationTargetException) {
+                                        android.util.Log.e(TAG, "   ❌ parseMethod C falló internamente: ${e.targetException}")
+                                        e.targetException?.printStackTrace()
+                                    } catch (e: Exception) {
+                                        android.util.Log.e(TAG, "   ❌ parseMethod C falló por otro motivo: ${e.message}")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── TRADUCCIÓN A NUESTRO FORMATO ──
+                val finalPages = mutableListOf<PageInfo>()
+                if (resultList != null) {
+                    for ((index, item) in resultList.withIndex()) {
+                        if (item == null) continue
+                        try {
+                            val c = item.javaClass
+                            var imageUrl = c.getMethod("getImageUrl").invoke(item) as? String
+                            if (imageUrl.isNullOrEmpty()) {
+                                imageUrl = c.getMethod("getUrl").invoke(item) as? String ?: ""
+                            }
+                            if (!imageUrl.isNullOrEmpty()) {
+                                finalPages.add(PageInfo(index = index, imageUrl = imageUrl))
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e(TAG, "   ❌ Error mapeando página: ${e.message}")
+                        }
+                    }
+                }
+
+                android.util.Log.e(TAG, "🏁 RESULTADO FINAL: ${finalPages.size} páginas extraídas y listas.")
+                return@withContext finalPages
+
+            } catch (e: Throwable) {
+                android.util.Log.e(TAG, "💀 ERROR FATAL AL EXTRAER PÁGINAS:", e)
+                return@withContext emptyList()
+            }
         }
     }
 

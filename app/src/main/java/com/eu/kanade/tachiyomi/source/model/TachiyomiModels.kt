@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.source.model
 
+import android.net.Uri
 import java.io.Serializable
 
 // --- 1. MODELO DE MANGA ---
@@ -108,14 +109,17 @@ class FilterList(val list: List<Filter<*>>) : List<Filter<*>> {
     override fun subList(fromIndex: Int, toIndex: Int): List<Filter<*>> = list.subList(fromIndex, toIndex)
 }
 
-interface Page {
-    val index: Int
-    var url: String
-    var imageUrl: String?
-}
+// 🔥 AQUÍ ESTÁ LA MAGIA: Ahora es una "open class", justo lo que la extensión necesita
+open class Page(
+    val index: Int,
+    val url: String = "",
+    var imageUrl: String? = null,
+    @Transient var uri: Uri? = null
+) {
+    val number: Int
+        get() = index + 1
 
-class PageImpl(
-    override val index: Int,
-    override var url: String = "",
-    override var imageUrl: String? = null
-) : Page
+    @Transient
+    @Volatile
+    var status: Int = 0 // 0 = READY, 1 = LOAD_PAGE, 2 = DOWNLOAD_IMAGE, etc.
+}

@@ -10,5 +10,7 @@ data class MangaInfo(
     val author: String = "",
     val description: String = "",
     val status: Int = 0,
-    val sourceName: String = ""
+    val sourceName: String = "",
+    // 🔥 EL CAMPO NUEVO PARA LOS FILTROS
+    val genres: String = ""
 )
