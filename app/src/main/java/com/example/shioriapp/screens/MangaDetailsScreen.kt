@@ -35,15 +35,15 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.shioriapp.viewmodel.MangaDetailViewModel
 import com.example.shioriapp.R
-import com.example.shioriapp.navigation.Routes
+import com.example.shioriapp.data.repository.LibraryManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MangaDetailsScreen(
     mangaUrl: String = "",
     sourceName: String = "",
-    mangaTitle: String = "Cargando...", // 👈 Respaldo si falla la navegación
-    onBack: () -> Unit = {},            // 👈 Valor por defecto (evita errores)
+    mangaTitle: String = "Cargando...",
+    onBack: () -> Unit = {},
     onCategoryClick: (String) -> Unit = {},
     onChapterClick: (com.example.shioriapp.domain.model.ChapterInfo, List<com.example.shioriapp.domain.model.ChapterInfo>) -> Unit = { _, _ -> },
     viewModel: MangaDetailViewModel = viewModel()
@@ -52,9 +52,15 @@ fun MangaDetailsScreen(
     val localContext = LocalContext.current
 
     LaunchedEffect(mangaUrl) {
-        Log.d("SHIORI_APP", "mangaTitle recibido: '$mangaTitle'") // 👈
+        LibraryManager.init(localContext) // Asegurar que el gestor este listo
         viewModel.loadMangaDetails(mangaUrl, sourceName, mangaTitle)
     }
+
+    // 🔥 CORRECCIÓN AQUÍ: Evaluamos contra la variable 'sourceName' de la pantalla, no la del manga de red.
+    val library by LibraryManager.library.collectAsState()
+    val isFavorite = state.manga?.let { manga ->
+        library.any { it.url == manga.url && it.sourceName == sourceName }
+    } ?: false
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
 
@@ -116,11 +122,10 @@ fun MangaDetailsScreen(
                     Spacer(modifier = Modifier.width(16.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
-                        // Título con lógica de respaldo
                         val displayTitle = state.manga?.title?.takeIf { it.isNotBlank() } ?: mangaTitle
 
                         Text(
-                            text = if (!state.manga?.title.isNullOrBlank()) state.manga!!.title else mangaTitle,
+                            text = displayTitle,
                             color = Color.White,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold
@@ -128,7 +133,6 @@ fun MangaDetailsScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // 💊 Píldora de Estado
                         val statusInt = state.manga?.status ?: 0
                         val (statusText, statusColor) = when (statusInt) {
                             1 -> "En curso" to Color(0xFF4CAF50)
@@ -161,7 +165,6 @@ fun MangaDetailsScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Autor e Icono de Fuente
                         val autor = state.manga?.author
                         if (!autor.isNullOrBlank() && autor.lowercase() != "desconocido") {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -196,7 +199,17 @@ fun MangaDetailsScreen(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    ActionIcon(Icons.Default.FavoriteBorder, "Favorito")
+                    // 🔥 CORRECCIÓN AQUÍ: Inyectar la extensión antes de guardarlo en disco
+                    ActionIcon(
+                        icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        label = if (isFavorite) "En Biblioteca" else "Añadir",
+                        onClick = {
+                            state.manga?.let { manga ->
+                                val mangaToSave = manga.copy(sourceName = sourceName)
+                                LibraryManager.toggleManga(localContext, mangaToSave)
+                            }
+                        }
+                    )
                     ActionIcon(Icons.Default.Share, "Compartir")
                     ActionIcon(Icons.Default.Sync, "Migrar")
                     ActionIcon(Icons.Default.FileDownload, "Descargar")
@@ -265,7 +278,6 @@ fun MangaDetailsScreen(
                 state.chapters.forEach { chapter ->
                     ChapterItem(
                         chapter = chapter,
-                        // 🔥 Esto usa el parámetro que acabamos de agregar arriba
                         onClick = { onChapterClick(chapter, state.chapters) }
                     )
                 }
