@@ -52,15 +52,18 @@ fun MangaDetailsScreen(
     val localContext = LocalContext.current
 
     LaunchedEffect(mangaUrl) {
-        LibraryManager.init(localContext) // Asegurar que el gestor este listo
+        LibraryManager.init(localContext)
         viewModel.loadMangaDetails(mangaUrl, sourceName, mangaTitle)
     }
 
-    // 🔥 CORRECCIÓN AQUÍ: Evaluamos contra la variable 'sourceName' de la pantalla, no la del manga de red.
     val library by LibraryManager.library.collectAsState()
     val isFavorite = state.manga?.let { manga ->
         library.any { it.url == manga.url && it.sourceName == sourceName }
     } ?: false
+
+    // 🔥 LEEMOS EL PROGRESO DE ESTE MANGA
+    val progressMap by LibraryManager.progressMap.collectAsState()
+    val mangaProgress = progressMap[mangaUrl]
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
 
@@ -76,6 +79,25 @@ fun MangaDetailsScreen(
 
         Scaffold(
             containerColor = Color.Transparent,
+            // 🔥 BOTÓN FLOTANTE: Comenzar o Reanudar
+            floatingActionButton = {
+                if (state.chapters.isNotEmpty()) {
+                    ExtendedFloatingActionButton(
+                        onClick = {
+                            val chapterToOpen = if (mangaProgress != null) {
+                                state.chapters.find { it.url == mangaProgress.lastChapterUrl } ?: state.chapters.last()
+                            } else {
+                                state.chapters.last() // Capítulo 1 asumiendo orden descendente
+                            }
+                            onChapterClick(chapterToOpen, state.chapters)
+                        },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = Color.White,
+                        icon = { Icon(if (mangaProgress != null) Icons.Default.PlayArrow else Icons.Default.Book, null) },
+                        text = { Text(if (mangaProgress != null) "Reanudar" else "Comenzar a leer") }
+                    )
+                }
+            },
             topBar = {
                 TopAppBar(
                     title = { },
@@ -104,7 +126,6 @@ fun MangaDetailsScreen(
                     modifier = Modifier.padding(16.dp).fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Portada del Manga
                     AsyncImage(
                         model = ImageRequest.Builder(localContext)
                             .data(state.manga?.coverUrl)
@@ -199,7 +220,6 @@ fun MangaDetailsScreen(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    // 🔥 CORRECCIÓN AQUÍ: Inyectar la extensión antes de guardarlo en disco
                     ActionIcon(
                         icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                         label = if (isFavorite) "En Biblioteca" else "Añadir",
@@ -276,52 +296,62 @@ fun MangaDetailsScreen(
                 }
 
                 state.chapters.forEach { chapter ->
+                    val isRead = mangaProgress?.readChapters?.contains(chapter.url) == true
+                    val isCurrent = mangaProgress?.lastChapterUrl == chapter.url
+
                     ChapterItem(
                         chapter = chapter,
+                        isRead = isRead,
+                        isCurrent = isCurrent,
                         onClick = { onChapterClick(chapter, state.chapters) }
                     )
                 }
-                Spacer(modifier = Modifier.height(32.dp))
+
+                // Espacio extra abajo para que el Botón Flotante no tape el último capítulo
+                Spacer(modifier = Modifier.height(80.dp))
             }
         }
     }
 }
 
+// 🔥 EL COMPONENTE ChapterItem ACTUALIZADO
 @Composable
 fun ChapterItem(
     chapter: com.example.shioriapp.domain.model.ChapterInfo,
+    isRead: Boolean,
+    isCurrent: Boolean,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .padding(16.dp),
+            .padding(16.dp)
+            .alpha(if (isRead) 0.5f else 1f), // Opaco si ya se leyó
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = chapter.name,
-                color = Color.White,
+                color = if (isCurrent) MaterialTheme.colorScheme.primary else Color.White,
                 fontSize = 14.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
             )
-            Text(
-                text = "Subido: ${chapter.dateUpload}",
-                color = Color.Gray,
-                fontSize = 11.sp
-            )
+            if (isRead) {
+                Text("Leído", color = Color.Gray, fontSize = 11.sp)
+            } else {
+                Text("Subido: ${chapter.dateUpload}", color = Color.Gray, fontSize = 11.sp)
+            }
         }
-        Icon(
-            imageVector = Icons.Default.FileDownload,
-            contentDescription = null,
-            tint = Color.Gray,
-            modifier = Modifier.size(20.dp)
-        )
+        if (isRead) {
+            Icon(Icons.Default.CheckCircle, null, tint = Color.Green, modifier = Modifier.size(16.dp))
+        } else {
+            Icon(Icons.Default.FileDownload, null, tint = Color.Gray, modifier = Modifier.size(20.dp))
+        }
     }
 }
 
+// 🔥 EL COMPONENTE ActionIcon ORIGINAL
 @Composable
 fun ActionIcon(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
