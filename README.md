@@ -1,48 +1,72 @@
-ShioriApp 📖
-ShioriApp es un lector de manga moderno para Android construido con Jetpack Compose. La aplicación permite a los usuarios explorar, organizar y leer contenido de múltiples fuentes externas mediante un sistema de extensiones dinámico inspirado en proyectos como Tachiyomi y Mihon.
+# 📖 ShioriApp
 
-✨ Características Principales
-Búsqueda Global Multi-Fuente: Realiza búsquedas asíncronas en tiempo real a través de todas las extensiones instaladas. Los resultados se agrupan por fuente y cuentan con un sistema de debounce para optimizar las peticiones mientras escribes.
+![Android](https://img.shields.io/badge/Platform-Android-3DDC84?logo=android&logoColor=white)
+![Kotlin](https://img.shields.io/badge/Language-Kotlin-7F52FF?logo=kotlin&logoColor=white)
+![Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white)
+![MVVM](https://img.shields.io/badge/Architecture-MVVM-FFA000?logo=android&logoColor=white)
 
-Biblioteca Local: Sistema de favoritos persistente que permite guardar y gestionar mangas localmente. Incluye lógica de "autocuración" para manejar datos de fuentes obsoletas.
+**ShioriApp** es una aplicación de lectura de manga de código abierto para Android, diseñada para ofrecer una experiencia fluida, moderna y centralizada. La aplicación utiliza un potente sistema de carga de extensiones que permite acceder a múltiples fuentes de contenido desde una única interfaz.
 
-Lector Inmersivo: Experiencia de lectura fluida con:
+---
 
-Modo Inmersivo: Ocultación automática de las barras del sistema.
+## ✨ Características Principales
 
-Carga Inteligente: Prefetch de páginas y capítulos para un scroll infinito sin interrupciones.
+* **🔍 Búsqueda Global Asíncrona:** Realiza búsquedas simultáneas en todas las extensiones instaladas sin bloquear la interfaz de usuario.
+* **⌨️ Búsqueda Inteligente (Debounce):** Resultados en tiempo real mientras escribes, optimizando el tráfico de red mediante un retardo controlado.
+* **📚 Gestión de Biblioteca:** Añade y elimina mangas de tu biblioteca personal con persistencia local de datos.
+* **📖 Lector Inmersivo:** Disfruta de un modo de lectura que aprovecha toda la pantalla (Immersive Mode), ocultando las barras del sistema para evitar distracciones.
+* **🧩 Extensiones Dinámicas:** Sistema robusto para cargar extensiones externas y fuentes de manga de manera dinámica.
+* **🎨 Diseño Material 3:** Interfaz construida íntegramente con Jetpack Compose siguiendo los estándares de diseño más modernos.
 
-Transiciones de Capítulo: Divisores visuales que indican el fin de un capítulo y el inicio del siguiente.
+---
 
-Gestión de Extensiones: Capacidad para cargar y utilizar fuentes de terceros de forma dinámica.
+## 🛠️ Tecnologías y Librerías
 
-Exploración por Categorías: Filtros rápidos para descubrir contenido nuevo basados en géneros y etiquetas.
+* **Lenguaje:** [Kotlin](https://kotlinlang.org/)
+* **Framework UI:** [Jetpack Compose](https://developer.android.com/jetpack/compose)
+* **Navegación:** [Compose Navigation](https://developer.android.com/jetpack/compose/navigation)
+* **Arquitectura:** MVVM con Corrutinas de Kotlin y StateFlow para la gestión reactiva del estado
+* **Carga de Imágenes:** [Coil](https://coil-kt.github.io/coil/) para el manejo eficiente de portadas y páginas de manga
+* **Red:** [OkHttp](https://square.github.io/okhttp/) y extensiones personalizadas para peticiones seguras
+* **Parsing:** [Jsoup](https://jsoup.org/) para el procesamiento de contenido HTML de las fuentes
 
-🛠️ Stack Tecnológico
-Lenguaje: Kotlin.
+---
 
-UI: Jetpack Compose (Material 3).
+## 🚀 Instalación
 
-Arquitectura: MVVM (Model-View-ViewModel).
+Sigue estos pasos para compilar y ejecutar el proyecto en tu entorno local:
 
-Concurrencia: Kotlin Coroutines & Flow.
+1.  **Clona el repositorio:**
+    ```bash
+    git clone [https://github.com/tu-usuario/shioriappofficial.git](https://github.com/tu-usuario/shioriappofficial.git)
+    ```
+2.  **Abre el proyecto** en Android Studio (Ladybug o superior recomendado).
+3.  **Sincroniza el proyecto** con los archivos Gradle (`build.gradle.kts`).
+4.  **Ejecuta la aplicación** en un emulador o dispositivo físico con Android 8.0 (API 26) o superior.
 
-Navegación: Compose Navigation con paso de argumentos complejos y rutas seguras.
+---
 
-Imágenes: Coil para la carga asíncrona de portadas y páginas de manga.
+## 📁 Estructura del Proyecto
 
-Persistencia: SharedPreferences con serialización JSON para la biblioteca.
+El proyecto sigue una organización modular por capas para facilitar el mantenimiento:
 
-📂 Estructura del Proyecto
-core.util: Utilidades para la carga dinámica de extensiones (ExtensionLoader).
+* `core.util`: Contiene las clases de carga dinámica de extensiones y utilidades generales.
+* `domain.model`: Define los modelos de datos base como `MangaInfo`, `ChapterInfo` y `PageInfo`.
+* `screens`: Contiene las interfaces de usuario (Composables) para cada sección (Home, Search, Details, Reader).
+* `viewmodel`: Maneja la lógica de negocio y el estado de las pantallas.
+* `navigation`: Define el grafo de navegación y las rutas de la aplicación.
 
-data: Repositorios y fuentes de datos (Keiyoushi, LibraryManager).
+---
 
-domain.model: Modelos de datos centrales como MangaInfo, ChapterInfo y PageInfo.
+## 🤝 Contribuciones
 
-screens: Pantallas principales (Home, Explore, Search, Details, Reader).
+¡Las contribuciones son bienvenidas! Si tienes ideas para nuevas funciones o has encontrado algún error, no dudes en abrir un *Issue* o enviar un *Pull Request*.
 
-viewmodel: Lógica de negocio y gestión de estado para cada pantalla.
+---
 
-🚀 Últimos Cambios (Resumen de Commit)
-feat: sistema de biblioteca local, búsqueda global asíncrona y correcciones de UI
+## 📄 Licencia
+
+Este proyecto está bajo la licencia **MIT**. Consulta el archivo `LICENSE` para más detalles.
+
+---
+*Desarrollado con ❤️ para la comunidad de lectores de manga.*
