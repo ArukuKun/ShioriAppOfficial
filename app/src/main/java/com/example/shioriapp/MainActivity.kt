@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.core.view.WindowCompat
 import com.example.shioriapp.core.util.ExtensionLoader
 import com.example.shioriapp.navigation.AppNavigation
 import com.example.shioriapp.ui.theme.ShioriAppTheme
@@ -17,6 +18,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         ExtensionLoader.loadAllExtensions(this)
         enableEdgeToEdge()
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
             ShioriAppTheme {
                 Surface(

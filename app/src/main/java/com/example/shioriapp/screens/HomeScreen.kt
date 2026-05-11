@@ -1,36 +1,37 @@
 package com.example.shioriapp.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.shioriapp.domain.model.MangaInfo // 🔥 ASEGÚRATE DE QUE ESTE IMPORT ESTÉ BIEN
+import com.example.shioriapp.domain.model.MangaInfo
+import com.example.shioriapp.data.repository.LibraryManager
 
 @Composable
 fun HomeScreen(
-    onMangaClick: (MangaInfo) -> Unit // 🔥 Pedimos el objeto completo
+    onMangaClick: (MangaInfo) -> Unit
 ) {
-    val recientes = emptyList<MangaInfo>()
-    val biblioteca = emptyList<MangaInfo>()
+    val context = LocalContext.current
+
+    LaunchedEffect(Unit) {
+        LibraryManager.init(context)
+    }
+
+    val biblioteca by LibraryManager.library.collectAsState()
 
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 110.dp),
@@ -43,23 +44,34 @@ fun HomeScreen(
             Text("Tu Biblioteca", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp))
         }
 
-        // Simulación de biblioteca vacía o con datos
         if (biblioteca.isEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Text("Tu biblioteca está vacía.", color = Color.Gray, modifier = Modifier.padding(top = 32.dp))
+                Text("Tu biblioteca está vacía. Ve a explorar o usa el buscador para añadir mangas.", color = Color.Gray, modifier = Modifier.padding(top = 32.dp))
             }
         } else {
             items(biblioteca) { manga ->
-                LibraryMangaCard(manga = manga, onClick = { onMangaClick(manga) })
+                LibraryMangaCard(
+                    manga = manga,
+                    onClick = {
+                        // 🔥 SISTEMA DE AUTOCURACIÓN: Elimina mangas de pruebas anteriores que se guardaron mal
+                        if (manga.sourceName.isBlank()) {
+                            LibraryManager.toggleManga(context, manga)
+                            Toast.makeText(context, "Manga corrupto eliminado. Búscalo de nuevo para leerlo.", Toast.LENGTH_LONG).show()
+                        } else {
+                            onMangaClick(manga)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }
 }
 
 @Composable
-fun LibraryMangaCard(manga: MangaInfo, onClick: () -> Unit) {
+fun LibraryMangaCard(manga: MangaInfo, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Card(
-        modifier = Modifier.fillMaxWidth().aspectRatio(0.7f).clickable { onClick() },
+        modifier = modifier.aspectRatio(0.7f).clickable { onClick() },
         shape = RoundedCornerShape(8.dp)
     ) {
         Box {

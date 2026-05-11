@@ -1,5 +1,6 @@
 package com.example.shioriapp.screens
 
+import android.app.Activity
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,15 +22,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.example.shioriapp.navigation.ReaderDataCache
 import com.example.shioriapp.viewmodel.ReaderViewModel
-import android.app.Activity
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 
 @Composable
 fun ReaderScreen(
@@ -51,17 +51,29 @@ fun ReaderScreen(
         }
     }
 
-    // Limpiamos al salir
+    // Limpiamos al salir y manejamos las barras inmersivas
     DisposableEffect(Unit) {
+        val activity = context as? Activity ?: return@DisposableEffect onDispose {}
+        val window = activity.window
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+
+        // Forzar que la app tome control del espacio de las barras
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        // Ocultar SOLO la barra de estado (más confiable que systemBars())
+        controller.hide(WindowInsetsCompat.Type.statusBars())
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+
         onDispose {
-            viewModel.clearReader()
-            ReaderDataCache.currentChapter = null
-            ReaderDataCache.chapters = emptyList()
+            controller.show(WindowInsetsCompat.Type.statusBars())
+            WindowCompat.setDecorFitsSystemWindows(window, true)
         }
     }
 
+
+
     // 🔥 PRECARGA INTELIGENTE (SCROLL INFINITO SIN PAUSAS)
-    // Calcula si estamos a 3 páginas del final para pedir el siguiente capítulo en silencio
     val shouldLoadMore by remember {
         derivedStateOf {
             val totalItems = listState.layoutInfo.totalItemsCount
@@ -106,10 +118,8 @@ fun ReaderScreen(
                 itemsIndexed(state.pages, key = { _, page -> page.uniqueId }) { index, readerPage ->
 
                     // 🔥 DIVISOR DE CAPÍTULOS TIPO MIHON
-                    // Si no es el primer ítem, y el capítulo actual es diferente al anterior, dibujamos la transición
                     if (index > 0 && state.pages[index - 1].chapter.url != readerPage.chapter.url) {
                         ChapterTransitionDivider(
-                            // 🔥 Limpiamos ambos nombres aquí
                             prevName = cleanChapterName(state.pages[index - 1].chapter.name),
                             nextName = cleanChapterName(readerPage.chapter.name)
                         )
@@ -121,13 +131,12 @@ fun ReaderScreen(
                     SubcomposeAsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(imageUrl)
-                            .crossfade(false) // ADIÓS A LA IMAGEN MONTADA
+                            .crossfade(false)
                             .build(),
                         contentDescription = "Página ${readerPage.displayIndex}",
                         contentScale = ContentScale.FillWidth,
                         modifier = Modifier.fillMaxWidth(),
                         loading = {
-                            // Una caja negra con loader para que el scroll no "salte" mientras carga
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -141,7 +150,6 @@ fun ReaderScreen(
                     )
                 }
 
-                // Loader final por si tu internet va más lento que tu dedo
                 if (state.isLoadingNext) {
                     item {
                         Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {

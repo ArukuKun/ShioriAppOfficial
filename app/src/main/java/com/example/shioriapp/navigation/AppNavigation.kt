@@ -1,6 +1,5 @@
 package com.example.shioriapp.navigation
 
-import android.util.Log
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -41,9 +40,9 @@ object Routes {
     const val REPOSITORY = "repository"
     const val DETAILS = "manga_details/{sourceName}?mangaUrl={mangaUrl}&mangaTitle={mangaTitle}"
     const val READER = "reader/{sourceName}"
+    const val SEARCH = "search" // 🔥 Nueva Ruta
 }
 
-// 🔥 Tu almacén temporal está perfecto
 object ReaderDataCache {
     var chapters: List<com.example.shioriapp.domain.model.ChapterInfo> = emptyList()
     var currentChapter: com.example.shioriapp.domain.model.ChapterInfo? = null
@@ -51,11 +50,10 @@ object ReaderDataCache {
 
 @Composable
 fun AppNavigation() {
-    // 🟢 CONTROLADOR 1: El Padre (Maneja las pantallas completas)
     val rootNavController = rememberNavController()
 
     NavHost(
-        navController = rootNavController, // 👈 Se asegura de usar root
+        navController = rootNavController,
         startDestination = Routes.MAIN_TABS,
         modifier = Modifier.fillMaxSize().background(Color.Black),
         enterTransition = { slideInHorizontally(tween(300)) { it } + fadeIn(tween(300)) },
@@ -63,12 +61,10 @@ fun AppNavigation() {
         popEnterTransition = { fadeIn(tween(300)) },
         popExitTransition = { slideOutHorizontally(tween(300)) { it } + fadeOut(tween(300)) }
     ) {
-        // --- 1. CONTENEDOR DE PESTAÑAS ---
         composable(Routes.MAIN_TABS) {
             MainTabsScreen(rootNavController)
         }
 
-        // --- 2. PANTALLA DE DETALLES ---
         composable(
             route = Routes.DETAILS,
             arguments = listOf(
@@ -104,7 +100,6 @@ fun AppNavigation() {
             )
         }
 
-        // --- 3. PANTALLA DEL LECTOR ---
         composable(
             route = Routes.READER,
             arguments = listOf(navArgument("sourceName") { type = NavType.StringType })
@@ -118,9 +113,21 @@ fun AppNavigation() {
             )
         }
 
-        // --- 4. PANTALLA DE REPOSITORIOS ---
         composable(Routes.REPOSITORY) {
             ExtensionsScreen(onBack = { rootNavController.popBackStack() })
+        }
+
+        // 🔥 PANTALLA DE BUSQUEDA GLOBAL
+        composable(Routes.SEARCH) {
+            SearchScreen(
+                onBack = { rootNavController.popBackStack() },
+                onMangaClick = { manga ->
+                    val encUrl = URLEncoder.encode(manga.url, "UTF-8")
+                    val encTitle = URLEncoder.encode(manga.title, "UTF-8")
+                    val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
+                    rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle")
+                }
+            )
         }
     }
 }
@@ -128,7 +135,6 @@ fun AppNavigation() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainTabsScreen(rootNavController: NavHostController) {
-    // 🟢 CONTROLADOR 2: El Hijo (Maneja el interior de las pestañas)
     val tabsNavController = rememberNavController()
     val navBackStackEntry by tabsNavController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Routes.HOME
@@ -150,7 +156,10 @@ fun MainTabsScreen(rootNavController: NavHostController) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { }) { Icon(Icons.Default.Search, "Buscar") }
+                    // 🔥 Conecta el botón a la búsqueda global
+                    IconButton(onClick = { rootNavController.navigate(Routes.SEARCH) }) {
+                        Icon(Icons.Default.Search, "Buscar")
+                    }
                     IconButton(onClick = { showNotifications = !showNotifications }) {
                         Icon(Icons.Default.Notifications, "Notificaciones")
                     }
@@ -185,8 +194,6 @@ fun MainTabsScreen(rootNavController: NavHostController) {
             }
         }
     ) { innerPadding ->
-
-        // ⚠️ ESTE ERA EL CULPABLE: Ahora usa explícitamente tabsNavController ⚠️
         NavHost(
             navController = tabsNavController,
             startDestination = Routes.HOME,
@@ -199,8 +206,6 @@ fun MainTabsScreen(rootNavController: NavHostController) {
                     val encUrl = URLEncoder.encode(manga.url, "UTF-8")
                     val encTitle = URLEncoder.encode(manga.title, "UTF-8")
                     val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
-
-                    // Salta al controlador padre para ver a pantalla completa
                     rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle")
                 })
             }
@@ -209,7 +214,6 @@ fun MainTabsScreen(rootNavController: NavHostController) {
                     val encUrl    = URLEncoder.encode(url,    "UTF-8")
                     val encTitle  = URLEncoder.encode(title,  "UTF-8")
                     val encSource = URLEncoder.encode(source, "UTF-8")
-
                     rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle")
                 })
             }
