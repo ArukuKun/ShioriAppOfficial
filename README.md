@@ -32,19 +32,6 @@
 
 ---
 
-## 🚀 Instalación
-
-Sigue estos pasos para compilar y ejecutar el proyecto en tu entorno local:
-
-1.  **Clona el repositorio:**
-    ```bash
-    git clone [https://github.com/tu-usuario/shioriappofficial.git](https://github.com/tu-usuario/shioriappofficial.git)
-    ```
-2.  **Abre el proyecto** en Android Studio (Ladybug o superior recomendado).
-3.  **Sincroniza el proyecto** con los archivos Gradle (`build.gradle.kts`).
-4.  **Ejecuta la aplicación** en un emulador o dispositivo físico con Android 8.0 (API 26) o superior.
-
----
 
 ## 📁 Estructura del Proyecto
 
