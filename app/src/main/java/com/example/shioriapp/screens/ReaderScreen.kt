@@ -30,6 +30,7 @@ import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.example.shioriapp.navigation.ReaderDataCache
 import com.example.shioriapp.viewmodel.ReaderViewModel
+import com.example.shioriapp.data.repository.LibraryManager // 🔥 Importación necesaria para el progreso
 
 @Composable
 fun ReaderScreen(
@@ -42,7 +43,7 @@ fun ReaderScreen(
     var showOverlay by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
-    // Arrancamos el lector
+    // 1. Arrancamos el lector
     LaunchedEffect(Unit) {
         val chapter = ReaderDataCache.currentChapter
         val chapters = ReaderDataCache.chapters
@@ -51,29 +52,59 @@ fun ReaderScreen(
         }
     }
 
-    // Limpiamos al salir y manejamos las barras inmersivas
-    DisposableEffect(Unit) {
-        val activity = context as? Activity ?: return@DisposableEffect onDispose {}
-        val window = activity.window
-        val controller = WindowCompat.getInsetsController(window, window.decorView)
+    // 🔥 2. GUARDAR PROGRESO AUTOMÁTICO AL HACER SCROLL
+    LaunchedEffect(listState.firstVisibleItemIndex) {
+        if (state.pages.isNotEmpty() && listState.firstVisibleItemIndex < state.pages.size) {
+            val currentPage = state.pages[listState.firstVisibleItemIndex]
+            val isLastPage = listState.firstVisibleItemIndex >= state.pages.size - 1
 
-        // Forzar que la app tome control del espacio de las barras
-        WindowCompat.setDecorFitsSystemWindows(window, false)
+            // Usamos la URL base del capítulo asumiendo que coincide con la del manga
+            val mangaUrlFallback = currentPage.chapter.url.substringBeforeLast("/")
 
-        // Ocultar SOLO la barra de estado (más confiable que systemBars())
-        controller.hide(WindowInsetsCompat.Type.statusBars())
-        controller.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-
-        onDispose {
-            controller.show(WindowInsetsCompat.Type.statusBars())
-            WindowCompat.setDecorFitsSystemWindows(window, true)
+            LibraryManager.saveProgress(
+                context = context,
+                mangaUrl = mangaUrlFallback,
+                chapterUrl = currentPage.chapter.url,
+                page = listState.firstVisibleItemIndex,
+                isFinished = isLastPage
+            )
         }
     }
 
+    // 🔥 3. REANUDAR EN LA PÁGINA CORRECTA (SCROLL AUTOMÁTICO AL ENTRAR)
+    LaunchedEffect(state.pages) {
+        val chapter = ReaderDataCache.currentChapter
+        if (chapter != null && state.pages.isNotEmpty()) {
+            val mangaUrlFallback = chapter.url.substringBeforeLast("/")
+            val progress = LibraryManager.progressMap.value[mangaUrlFallback]
 
+            if (progress != null && progress.lastChapterUrl == chapter.url && progress.lastPage > 0) {
+                // Hacemos scroll directamente a la página donde se quedó
+                listState.scrollToItem(progress.lastPage)
+            }
+        }
+    }
 
-    // 🔥 PRECARGA INTELIGENTE (SCROLL INFINITO SIN PAUSAS)
+    // 4. Limpiamos al salir y manejamos las barras inmersivas
+    DisposableEffect(Unit) {
+        val activity = context as? Activity
+        val window = activity?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+
+        controller?.let {
+            it.hide(WindowInsetsCompat.Type.systemBars())
+            it.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+
+        onDispose {
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+
+            viewModel.clearReader()
+            ReaderDataCache.currentChapter = null
+            ReaderDataCache.chapters = emptyList()
+        }
+    }
+
     val shouldLoadMore by remember {
         derivedStateOf {
             val totalItems = listState.layoutInfo.totalItemsCount
@@ -88,7 +119,6 @@ fun ReaderScreen(
         }
     }
 
-    // Título dinámico para la TopBar según lo que estés viendo en pantalla
     val currentVisibleChapterName by remember {
         derivedStateOf {
             val firstVisibleIndex = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: 0
@@ -97,6 +127,15 @@ fun ReaderScreen(
             } else {
                 ReaderDataCache.currentChapter?.name ?: "Lector"
             }
+        }
+    }
+
+    val currentVisiblePageInfo by remember {
+        derivedStateOf {
+            val firstVisibleIndex = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: 0
+            if (state.pages.isNotEmpty() && firstVisibleIndex < state.pages.size) {
+                state.pages[firstVisibleIndex]
+            } else null
         }
     }
 
@@ -111,13 +150,11 @@ fun ReaderScreen(
                     .fillMaxSize()
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
-                        indication = null // Quita el efecto de "ola" al tocar para que sea limpio
+                        indication = null
                     ) { showOverlay = !showOverlay }
             ) {
-                // Dibujamos las páginas usando itemsIndexed para saber cuándo cambia el capítulo
                 itemsIndexed(state.pages, key = { _, page -> page.uniqueId }) { index, readerPage ->
 
-                    // 🔥 DIVISOR DE CAPÍTULOS TIPO MIHON
                     if (index > 0 && state.pages[index - 1].chapter.url != readerPage.chapter.url) {
                         ChapterTransitionDivider(
                             prevName = cleanChapterName(state.pages[index - 1].chapter.name),
@@ -127,7 +164,6 @@ fun ReaderScreen(
 
                     val imageUrl = readerPage.page.imageUrl ?: readerPage.page.url
 
-                    // 🔥 CARGA DE IMAGEN SIN EFECTO FANTASMA
                     SubcomposeAsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(imageUrl)
@@ -160,7 +196,29 @@ fun ReaderScreen(
             }
         }
 
-        // ── BARRA SUPERIOR ANIMADA ──
+        if (currentVisiblePageInfo != null) {
+            val pageInfo = currentVisiblePageInfo!!
+
+            val (capActual, capTotal) = remember(pageInfo.chapter.url) {
+                val total = ReaderDataCache.chapters.size
+                val index = ReaderDataCache.chapters.indexOfFirst { it.url == pageInfo.chapter.url }
+                val current = if (index != -1) total - index else 0
+                Pair(current, total)
+            }
+
+            Text(
+                text = "Cap. $capActual/$capTotal  •  Pág. ${pageInfo.displayIndex}/${pageInfo.totalPages}",
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 32.dp)
+                    .background(Color(0xFF121212).copy(alpha = 0.8f), androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+        }
+
         AnimatedVisibility(
             visible = showOverlay,
             enter = slideInVertically() + fadeIn(),
@@ -190,13 +248,12 @@ fun ReaderScreen(
     }
 }
 
-// 🔥 COMPONENTE: El cartel oscuro que separa los capítulos
 @Composable
 fun ChapterTransitionDivider(prevName: String, nextName: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF121212)) // Un negro un poco más claro para que resalte
+            .background(Color(0xFF121212))
             .padding(vertical = 48.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -213,15 +270,12 @@ fun ChapterTransitionDivider(prevName: String, nextName: String) {
 }
 
 fun cleanChapterName(rawName: String): String {
-    // Busca "Capítulo X", "Cap X", "Chapter X" (incluso con decimales como 14.5)
     val regex = Regex("(?i)(capítulo|capitulo|chapter|cap\\.?|ch\\.?)\\s*\\d+(\\.\\d+)?")
     val match = regex.find(rawName)
 
     if (match != null) {
-        // Si encontró el patrón, devuelve SOLO eso, con la primera letra en mayúscula
         return match.value.replaceFirstChar { it.uppercase() }
     }
 
-    // Plan B: Si es un "One-shot" o no tiene número, lo cortamos en el primer guión o dos puntos
     return rawName.split("-", ":").first().trim()
 }

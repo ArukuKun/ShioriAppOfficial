@@ -7,34 +7,128 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class ReadingProgress(
+    val lastChapterUrl: String,
+    val lastPage: Int,
+    val readChapters: Set<String> = emptySet()
+)
 
 object LibraryManager {
     private val _library = MutableStateFlow<List<MangaInfo>>(emptyList())
     val library: StateFlow<List<MangaInfo>> = _library.asStateFlow()
+
+    private val _progressMap = MutableStateFlow<Map<String, ReadingProgress>>(emptyMap())
+    val progressMap: StateFlow<Map<String, ReadingProgress>> = _progressMap.asStateFlow()
+
     private var isInitialized = false
 
     fun init(context: Context) {
         if (isInitialized) return
         val prefs = context.getSharedPreferences("shiori_library", Context.MODE_PRIVATE)
-        val json = prefs.getString("library_data", "[]") ?: "[]"
-        try {
-            _library.value = Json.decodeFromString(json)
-        } catch (e: Exception) {
-            _library.value = emptyList()
-        }
+
+        val jsonLib = prefs.getString("library_data", "[]") ?: "[]"
+        _library.value = try { Json.decodeFromString(jsonLib) } catch (e: Exception) { emptyList() }
+
+        val jsonProg = prefs.getString("reading_progress", "{}") ?: "{}"
+        _progressMap.value = try { Json.decodeFromString(jsonProg) } catch (e: Exception) { emptyMap() }
+
         isInitialized = true
     }
 
+    // ── Guardar progreso al leer un capítulo ──────────────────────────────────
+    fun saveProgress(
+        context: Context,
+        mangaUrl: String,
+        chapterUrl: String,
+        page: Int,
+        isFinished: Boolean = false
+    ) {
+        val current = _progressMap.value.toMutableMap()
+        val existing = current[mangaUrl] ?: ReadingProgress(chapterUrl, page)
+
+        val newReadChapters = if (isFinished) {
+            existing.readChapters + chapterUrl
+        } else {
+            existing.readChapters
+        }
+
+        current[mangaUrl] = ReadingProgress(
+            lastChapterUrl = chapterUrl,
+            lastPage = page,
+            readChapters = newReadChapters
+        )
+
+        _progressMap.value = current
+        persist(context, current)
+    }
+
+    // ── Marcar / desmarcar un capítulo manualmente ───────────────────────────
+    fun toggleChapterRead(context: Context, mangaUrl: String, chapterUrl: String) {
+        val current = _progressMap.value.toMutableMap()
+        val existing = current[mangaUrl]
+            ?: ReadingProgress(lastChapterUrl = chapterUrl, lastPage = 0)
+
+        val newReadChapters = if (chapterUrl in existing.readChapters) {
+            existing.readChapters - chapterUrl          // desmarcar
+        } else {
+            existing.readChapters + chapterUrl          // marcar
+        }
+
+        // Si desmarcamos el que era "último leído", apuntar al más reciente del resto
+        val newLastChapter = if (
+            chapterUrl == existing.lastChapterUrl && chapterUrl !in newReadChapters
+        ) {
+            newReadChapters.lastOrNull() ?: ""
+        } else {
+            existing.lastChapterUrl
+        }
+
+        current[mangaUrl] = existing.copy(
+            readChapters = newReadChapters,
+            lastChapterUrl = newLastChapter
+        )
+
+        _progressMap.value = current
+        persist(context, current)
+    }
+
+    // ── Marcar TODOS los capítulos como leídos ───────────────────────────────
+    // chapterUrls debe venir en orden DESCENDENTE (el primero = más reciente)
+    fun markAllChaptersRead(context: Context, mangaUrl: String, chapterUrls: List<String>) {
+        if (chapterUrls.isEmpty()) return
+
+        val current = _progressMap.value.toMutableMap()
+        val existing = current[mangaUrl]
+            ?: ReadingProgress(lastChapterUrl = chapterUrls.first(), lastPage = 0)
+
+        current[mangaUrl] = existing.copy(
+            readChapters = existing.readChapters + chapterUrls.toSet(),
+            lastChapterUrl = chapterUrls.first()        // capítulo más reciente
+        )
+
+        _progressMap.value = current
+        persist(context, current)
+    }
+    fun unmarkAllChapters(context: Context, mangaUrl: String) {
+        val current = _progressMap.value.toMutableMap()
+        current.remove(mangaUrl)
+        _progressMap.value = current
+        persist(context, current)
+    }
     fun toggleManga(context: Context, manga: MangaInfo) {
         val current = _library.value.toMutableList()
         val exists = current.find { it.url == manga.url && it.sourceName == manga.sourceName }
-        if (exists != null) {
-            current.remove(exists)
-        } else {
-            current.add(manga)
-        }
+        if (exists != null) current.remove(exists) else current.add(manga)
         _library.value = current
-        val prefs = context.getSharedPreferences("shiori_library", Context.MODE_PRIVATE)
-        prefs.edit().putString("library_data", Json.encodeToString(current)).apply()
+        context.getSharedPreferences("shiori_library", Context.MODE_PRIVATE)
+            .edit().putString("library_data", Json.encodeToString(current)).apply()
+    }
+
+    private fun persist(context: Context, map: Map<String, ReadingProgress>) {
+        context.getSharedPreferences("shiori_library", Context.MODE_PRIVATE)
+            .edit().putString("reading_progress", Json.encodeToString(map)).apply()
     }
 }
