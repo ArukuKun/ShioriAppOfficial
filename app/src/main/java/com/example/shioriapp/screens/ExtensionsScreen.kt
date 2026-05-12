@@ -128,7 +128,7 @@ fun ExtensionsScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Repositorio Keiyoushi",
+                        text = "Extensiones",
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp
                     )
@@ -139,7 +139,6 @@ fun ExtensionsScreen(
                     }
                 },
                 actions = {
-                    // --- NUEVO: BOTÓN PARA ABRIR MENÚ DE FILTROS ---
                     IconButton(onClick = { showFilterSheet = true }) {
                         Icon(
                             imageVector = Icons.Default.FilterList,

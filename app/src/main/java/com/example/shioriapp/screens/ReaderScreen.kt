@@ -97,17 +97,14 @@ fun ReaderScreen(
         }
 
         onDispose {
-            // Restaurar las barras al salir del lector
             controller?.show(WindowInsetsCompat.Type.systemBars())
 
-            // Limpiar datos
             viewModel.clearReader()
             ReaderDataCache.currentChapter = null
             ReaderDataCache.chapters = emptyList()
         }
     }
 
-    // 🔥 PRECARGA INTELIGENTE (SCROLL INFINITO SIN PAUSAS)
     val shouldLoadMore by remember {
         derivedStateOf {
             val totalItems = listState.layoutInfo.totalItemsCount
@@ -130,6 +127,15 @@ fun ReaderScreen(
             } else {
                 ReaderDataCache.currentChapter?.name ?: "Lector"
             }
+        }
+    }
+
+    val currentVisiblePageInfo by remember {
+        derivedStateOf {
+            val firstVisibleIndex = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: 0
+            if (state.pages.isNotEmpty() && firstVisibleIndex < state.pages.size) {
+                state.pages[firstVisibleIndex]
+            } else null
         }
     }
 
@@ -188,6 +194,29 @@ fun ReaderScreen(
                     }
                 }
             }
+        }
+
+        if (currentVisiblePageInfo != null) {
+            val pageInfo = currentVisiblePageInfo!!
+
+            val (capActual, capTotal) = remember(pageInfo.chapter.url) {
+                val total = ReaderDataCache.chapters.size
+                val index = ReaderDataCache.chapters.indexOfFirst { it.url == pageInfo.chapter.url }
+                val current = if (index != -1) total - index else 0
+                Pair(current, total)
+            }
+
+            Text(
+                text = "Cap. $capActual/$capTotal  •  Pág. ${pageInfo.displayIndex}/${pageInfo.totalPages}",
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 32.dp)
+                    .background(Color(0xFF121212).copy(alpha = 0.8f), androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+            )
         }
 
         AnimatedVisibility(
