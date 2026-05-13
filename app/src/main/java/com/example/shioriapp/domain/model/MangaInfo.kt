@@ -1,16 +1,18 @@
 package com.example.shioriapp.domain.model
 
+import androidx.compose.runtime.Immutable
 import kotlinx.serialization.Serializable
 
 @Serializable
+@Immutable
 data class MangaInfo(
-    val title: String,
     val url: String,
-    val coverUrl: String,
+    val title: String,
+    val artist: String = "",
     val author: String = "",
     val description: String = "",
+    val genres: List<String> = emptyList(),
     val status: Int = 0,
-    val sourceName: String = "",
-    // 🔥 EL CAMPO NUEVO PARA LOS FILTROS
-    val genres: String = ""
+    val coverUrl: String = "",
+    val sourceName: String
 )

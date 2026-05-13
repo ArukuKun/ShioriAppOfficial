@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.viewmodel.ExploreViewModel
 
 @Composable
@@ -35,18 +35,19 @@ fun ExploreScreen(
 
     Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
 
-        // 🔥 ESTO BAJA EL CONTENIDO: Agregamos un pequeño espacio arriba
-        // para compensar la barra superior transparente.
         Spacer(modifier = Modifier.height(16.dp))
 
         // ── CATEGORÍAS ──
         LazyRow(
-            // Ajustamos el padding para que arriba y abajo esté equilibrado
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            items(state.categories) { category ->
+            // 🔥 OPTIMIZACIÓN 1: Llave única para las categorías
+            items(
+                items = state.categories,
+                key = { category -> category }
+            ) { category ->
                 val isSelected = state.selectedCategory == category
                 FilterChip(
                     selected = isSelected,
@@ -57,7 +58,7 @@ fun ExploreScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp)) // Espacio entre chips y los mangas
+        Spacer(modifier = Modifier.height(8.dp))
 
         // ── GRILLA ──
         if (state.isLoading) {
@@ -72,13 +73,20 @@ fun ExploreScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxSize()
+                // 🔥 Aseguramos que ocupe el resto del espacio disponible correctamente
+                modifier = Modifier.fillMaxWidth().weight(1f)
             ) {
-                items(state.displayMangas) { manga ->
+                // 🔥 OPTIMIZACIÓN 2: Llave única usando la URL del manga
+                items(
+                    items = state.displayMangas,
+                    key = { manga -> manga.url }
+                ) { manga ->
                     MangaGridItem(
-                        title = manga.title,
-                        coverUrl = manga.coverUrl ?: "",
-                        onClick = { onMangaClick(manga.url, manga.sourceName, manga.title) }
+                        manga = manga, // Pasamos el objeto completo
+                        onClick = {
+                            // Lógica de navegación restaurada
+                            onMangaClick(manga.url, manga.sourceName, manga.title)
+                        }
                     )
                 }
             }
@@ -87,25 +95,31 @@ fun ExploreScreen(
 }
 
 @Composable
-fun MangaGridItem(title: String, coverUrl: String, onClick: () -> Unit) {
-    Column(modifier = Modifier.clickable { onClick() }.fillMaxWidth()) {
+fun MangaGridItem(manga: MangaInfo, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onClick() }
+    ) {
         AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current).data(coverUrl).crossfade(true).build(),
+            model = manga.coverUrl,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(0.7f)
-                .clip(RoundedCornerShape(8.dp))
                 .background(Color.DarkGray)
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = title,
+            text = manga.title,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 2,
-            overflow = TextOverflow.Ellipsis
+            color = Color.White,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 4.dp)
         )
     }
 }

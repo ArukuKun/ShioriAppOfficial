@@ -1,8 +1,9 @@
 package com.example.shioriapp.domain.model
 
-import kotlinx.serialization.Serializable
+import androidx.compose.runtime.Immutable
 
-@Serializable
+
+@Immutable
 data class ChapterInfo(
     val name: String,
     val url: String,

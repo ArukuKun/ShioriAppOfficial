@@ -1,9 +1,15 @@
 package com.example.shioriapp.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
@@ -12,13 +18,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.viewmodel.SearchViewModel
 
@@ -27,6 +38,7 @@ import com.example.shioriapp.viewmodel.SearchViewModel
 fun SearchScreen(
     onBack: () -> Unit,
     onMangaClick: (MangaInfo) -> Unit,
+    modifier: Modifier = Modifier, // 🔥 SOLUCIÓN AL ERROR: Añadimos el parámetro modifier
     viewModel: SearchViewModel = viewModel()
 ) {
     val query by viewModel.searchQuery.collectAsState()
@@ -40,6 +52,7 @@ fun SearchScreen(
     }
 
     Scaffold(
+        modifier = modifier, // 🔥 Aplicamos el modifier al Scaffold
         topBar = {
             TopAppBar(
                 title = {
@@ -77,7 +90,9 @@ fun SearchScreen(
             if (error != null) {
                 Text(text = error!!, color = Color.Red, modifier = Modifier.align(Alignment.Center))
             } else if (globalResults.isEmpty() && query.isNotEmpty()) {
-                Text(text = "Cargando...", color = Color.Gray, modifier = Modifier.align(Alignment.Center))
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -85,7 +100,6 @@ fun SearchScreen(
                 ) {
                     items(globalResults) { result ->
                         Column(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
-                            // Título de la fuente / extensión
                             Text(
                                 text = result.sourceName,
                                 fontWeight = FontWeight.Bold,
@@ -94,7 +108,6 @@ fun SearchScreen(
                             )
 
                             if (result.mangas == null) {
-                                // 🔥 ESTADO 1: CARGANDO LA EXTENSIÓN
                                 Box(
                                     modifier = Modifier.fillMaxWidth().height(120.dp),
                                     contentAlignment = Alignment.Center
@@ -102,15 +115,13 @@ fun SearchScreen(
                                     CircularProgressIndicator()
                                 }
                             } else if (result.error != null) {
-                                // 🔥 ESTADO 2: DIO ERROR ESTA EXTENSIÓN
                                 Text(
                                     text = result.error,
                                     color = MaterialTheme.colorScheme.error,
                                     fontSize = 14.sp,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                                 )
-                            } else if (result.mangas.isEmpty()) {
-                                // 🔥 ESTADO 3: SIN RESULTADOS
+                            } else if (result.mangas!!.isEmpty()) {
                                 Text(
                                     text = "No se encontraron resultados.",
                                     color = Color.Gray,
@@ -118,21 +129,20 @@ fun SearchScreen(
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                                 )
                             } else {
-                                // 🔥 ESTADO 4: MANGAS CARGADOS
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    // Agregamos !! para decirle al compilador que aquí mangas no es nulo
                                     items(result.mangas!!) { manga ->
-                                        LibraryMangaCard(
+                                        // 🔥 Usamos la Card optimizada para búsqueda
+                                        SearchMangaCard(
                                             manga = manga,
                                             onClick = {
-                                                // Aseguramos inyectar la fuente antes de navegar a detalles
-                                                val mangaConSource = if (manga.sourceName.isBlank()) manga.copy(sourceName = result.sourceName) else manga
+                                                val mangaConSource = if (manga.sourceName.isBlank())
+                                                    manga.copy(sourceName = result.sourceName)
+                                                else manga
                                                 onMangaClick(mangaConSource)
-                                            },
-                                            modifier = Modifier.width(110.dp) // Ancho fijo para scroll horizontal
+                                            }
                                         )
                                     }
                                 }
@@ -141,6 +151,39 @@ fun SearchScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun SearchMangaCard(manga: MangaInfo, onClick: () -> Unit) {
+    val gradient = remember {
+        Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.9f)), startY = 300f)
+    }
+
+    Card(
+        modifier = Modifier
+            .width(120.dp)
+            .aspectRatio(0.7f)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Box {
+            AsyncImage(
+                model = manga.coverUrl, // 🔥 Corregido a coverUrl para coincidir con tu modelo
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(modifier = Modifier.fillMaxSize().background(gradient))
+            Text(
+                text = manga.title,
+                color = Color.White,
+                fontSize = 11.sp,
+                modifier = Modifier.align(Alignment.BottomStart).padding(6.dp),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

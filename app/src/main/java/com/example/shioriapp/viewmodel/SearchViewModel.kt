@@ -8,12 +8,14 @@ import com.example.shioriapp.domain.model.ChapterInfo
 import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.domain.source.Source
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -27,10 +29,11 @@ data class ExtensionGroup(
 
 data class SourceSearchResult(
     val sourceName: String,
-    val mangas: List<MangaInfo>? = null, // Si es null, mostrará el spinner de cargando
+    val mangas: List<MangaInfo>? = null,
     val error: String? = null
 )
 
+@OptIn(FlowPreview::class)
 class SearchViewModel : ViewModel() {
 
     private var installedSources: List<Source> = emptyList()
@@ -49,9 +52,21 @@ class SearchViewModel : ViewModel() {
 
     private val searchMutex = Mutex()
 
-    // 🔥 Variables para controlar la búsqueda automática mientras escribes
-    private var typingJob: Job? = null
-    private var searchJob: Job? = null
+    init {
+        viewModelScope.launch {
+            _searchQuery
+                .debounce(700L) // Espera 700ms sin teclear
+                .distinctUntilChanged() // Evita buscar lo mismo dos veces
+                .collectLatest { query ->
+                    // collectLatest cancela automáticamente la búsqueda anterior si tecleas de nuevo
+                    if (query.isBlank()) {
+                        _globalSearchResults.value = emptyList()
+                    } else {
+                        executeSearch(query)
+                    }
+                }
+        }
+    }
 
     fun initAllSources(context: Context) {
         if (installedSources.isEmpty()) {
@@ -81,46 +96,25 @@ class SearchViewModel : ViewModel() {
 
     fun onQueryChange(query: String) {
         _searchQuery.value = query
-
-        // 🔥 Cancelamos el temporizador anterior y la búsqueda en curso cada vez que tocas una tecla
-        typingJob?.cancel()
-        searchJob?.cancel()
-
-        // Si borraste todo el texto, limpiamos la pantalla de inmediato
-        if (query.isBlank()) {
-            _globalSearchResults.value = emptyList()
-            return
-        }
-
-        // 🔥 Iniciamos un nuevo temporizador. Si pasas 700ms sin teclear, se dispara la búsqueda.
-        typingJob = viewModelScope.launch {
-            delay(700)
-            search()
-        }
     }
 
-    fun search() {
-        val query = _searchQuery.value
+    private suspend fun executeSearch(query: String) {
         if (installedSources.isEmpty()) {
             _error.value = "No hay ninguna extensión instalada."
             return
         }
-        if (query.isBlank()) return
 
         _error.value = null
 
-        // Por seguridad, si el usuario apretó el botón de buscar manual, cancelamos la auto-búsqueda
-        searchJob?.cancel()
+        // Cargamos todas las fuentes disponibles en la UI con estado "Cargando"
+        val initialResults = installedSources.map { source ->
+            SourceSearchResult(sourceName = source.name, mangas = null, error = null)
+        }
+        _globalSearchResults.value = initialResults
 
-        searchJob = viewModelScope.launch {
-            // 1. Cargamos todas las fuentes disponibles en la UI con estado "Cargando"
-            val initialResults = installedSources.map { source ->
-                SourceSearchResult(sourceName = source.name, mangas = null, error = null)
-            }
-            _globalSearchResults.value = initialResults
-
-            // 2. Disparamos la búsqueda. Al estar dentro de este launch, si el usuario
-            // vuelve a teclear, todas estas tareas de red se cancelan automáticamente ahorrando internet.
+        // Disparamos la búsqueda en paralelo. coroutineScope asegura que si cancelamos
+        // desde afuera (collectLatest), las peticiones de red internas se aborten.
+        kotlinx.coroutines.coroutineScope {
             installedSources.forEach { source ->
                 launch(Dispatchers.IO) {
                     try {
@@ -149,7 +143,7 @@ class SearchViewModel : ViewModel() {
         }
     }
 
-    // --- MANEJO DE DETALLES Y CAPÍTULOS INTACTOS ---
+    // --- MANEJO DE DETALLES Y CAPÍTULOS ---
     private val _detailManga = MutableStateFlow<MangaInfo?>(null)
     val detailManga: StateFlow<MangaInfo?> = _detailManga.asStateFlow()
 

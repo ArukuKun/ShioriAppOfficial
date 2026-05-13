@@ -22,16 +22,14 @@ import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.data.repository.LibraryManager
 
 @Composable
-fun HomeScreen(
-    onMangaClick: (MangaInfo) -> Unit
-) {
+fun HomeScreen(onMangaClick: (MangaInfo) -> Unit) {
     val context = LocalContext.current
+    // Recolectamos el estado de la biblioteca
+    val biblioteca by LibraryManager.library.collectAsState()
 
     LaunchedEffect(Unit) {
         LibraryManager.init(context)
     }
-
-    val biblioteca by LibraryManager.library.collectAsState()
 
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 110.dp),
@@ -46,22 +44,16 @@ fun HomeScreen(
 
         if (biblioteca.isEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Text("Tu biblioteca está vacía. Ve a explorar o usa el buscador para añadir mangas.", color = Color.Gray, modifier = Modifier.padding(top = 32.dp))
+                Text("Tu biblioteca está vacía.", color = Color.Gray, modifier = Modifier.padding(top = 32.dp))
             }
         } else {
-            items(biblioteca) { manga ->
+            items(
+                items = biblioteca,
+                key = { it.url } // 🔥 Clave única para evitar recomposiciones
+            ) { manga ->
                 LibraryMangaCard(
                     manga = manga,
-                    onClick = {
-                        // 🔥 SISTEMA DE AUTOCURACIÓN: Elimina mangas de pruebas anteriores que se guardaron mal
-                        if (manga.sourceName.isBlank()) {
-                            LibraryManager.toggleManga(context, manga)
-                            Toast.makeText(context, "Manga corrupto eliminado. Búscalo de nuevo para leerlo.", Toast.LENGTH_LONG).show()
-                        } else {
-                            onMangaClick(manga)
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
+                    onClick = { onMangaClick(manga) }
                 )
             }
         }
@@ -69,14 +61,21 @@ fun HomeScreen(
 }
 
 @Composable
-fun LibraryMangaCard(manga: MangaInfo, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun LibraryMangaCard(manga: MangaInfo, onClick: () -> Unit) {
+    val gradient = remember { Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.9f)), startY = 300f) }
+
     Card(
-        modifier = modifier.aspectRatio(0.7f).clickable { onClick() },
+        modifier = Modifier.aspectRatio(0.7f).clickable { onClick() },
         shape = RoundedCornerShape(8.dp)
     ) {
         Box {
-            AsyncImage(model = manga.coverUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.9f)), startY = 150f)))
+            AsyncImage(
+                model = manga.coverUrl, // 🔥 Nombre corregido
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(modifier = Modifier.fillMaxSize().background(gradient))
             Text(manga.title, color = Color.White, fontSize = 12.sp, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp), maxLines = 2)
         }
     }

@@ -19,3 +19,16 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Proteger modelos de dominio e interfaces para que las extensiones dinámicas no fallen
+-keep class com.example.shioriapp.domain.model.** { *; }
+-keep class com.example.shioriapp.domain.source.** { *; }
+-keep class com.eu.kanade.tachiyomi.** { *; }
+
+# Proteger librerías de red y parsing (Jsoup e Injekt)
+-keep class org.jsoup.** { *; }
+-keep class uy.kohesive.injekt.** { *; }
+
+# Proteger clases usadas para la serialización de JSON
+-keepattributes *Annotation*, InnerClasses
+-keep class kotlinx.serialization.** { *; }

@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -28,6 +29,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.shioriapp.R
 import com.example.shioriapp.screens.*
+import com.example.shioriapp.viewmodel.SharedReaderViewModel
 import java.net.URLDecoder
 import java.net.URLEncoder
 
@@ -43,14 +45,10 @@ object Routes {
     const val SEARCH = "search" // 🔥 Nueva Ruta
 }
 
-object ReaderDataCache {
-    var chapters: List<com.example.shioriapp.domain.model.ChapterInfo> = emptyList()
-    var currentChapter: com.example.shioriapp.domain.model.ChapterInfo? = null
-}
-
 @Composable
 fun AppNavigation() {
     val rootNavController = rememberNavController()
+    val sharedReaderViewModel: SharedReaderViewModel = viewModel()
 
     NavHost(
         navController = rootNavController,
@@ -86,17 +84,15 @@ fun AppNavigation() {
                 mangaTitle = mangaTitle,
                 onBack = { rootNavController.popBackStack() },
                 onChapterClick = { chapter, chapters ->
-                    ReaderDataCache.currentChapter = chapter
-                    ReaderDataCache.chapters = chapters
+                    sharedReaderViewModel.currentChapter = chapter
+                    sharedReaderViewModel.chapters = chapters
 
                     val safeSource = if (sourceName.isNotBlank()) sourceName else "FuenteDesconocida"
                     val encSource = URLEncoder.encode(safeSource, "UTF-8")
 
                     rootNavController.navigate("reader/$encSource")
                 },
-                onCategoryClick = { tag ->
-                    rootNavController.navigate(Routes.MAIN_TABS) { popUpTo(Routes.MAIN_TABS) { inclusive = false } }
-                }
+                onCategoryClick = { /* ... */ }
             )
         }
 
@@ -109,6 +105,7 @@ fun AppNavigation() {
 
             ReaderScreen(
                 sourceName = decodedSource,
+                sharedViewModel = sharedReaderViewModel,
                 onBack = { rootNavController.popBackStack() }
             )
         }
@@ -117,7 +114,6 @@ fun AppNavigation() {
             ExtensionsScreen(onBack = { rootNavController.popBackStack() })
         }
 
-        // 🔥 PANTALLA DE BUSQUEDA GLOBAL
         composable(Routes.SEARCH) {
             SearchScreen(
                 onBack = { rootNavController.popBackStack() },

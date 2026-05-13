@@ -23,33 +23,47 @@ class MangaDetailViewModel : ViewModel() {
     val state: StateFlow<DetailsState> = _state.asStateFlow()
 
     fun loadMangaDetails(url: String, sourceName: String, title: String) {
-        // 👇 Decodifica "Bakaguya+Scanlation" → "Bakaguya Scanlation"
-        val decodedSource = java.net.URLDecoder.decode(sourceName, "UTF-8")
-
-        _state.update { it.copy(isLoading = true) }
+        // Actualizamos el estado inicial
+        _state.value = _state.value.copy(
+            manga = MangaInfo(
+                url = url,
+                title = title,
+                sourceName = sourceName, // ✅ Corregido
+                coverUrl = ""
+            ),
+            isLoading = true
+        )
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                Log.d("SHIORI_APP", "Buscando source: '$decodedSource'")
-                val source = ExtensionLoader.getSource(decodedSource)
+                // 🔥 ERROR CORREGIDO: Usamos sourceName que viene por parámetro, no decodedSource
+                Log.d("SHIORI_APP", "Buscando source: '$sourceName'")
+                val source = ExtensionLoader.getSource(sourceName)
                 Log.d("SHIORI_APP", "Source encontrado: $source")
 
                 if (source == null) {
-                    Log.e("SHIORI_APP", "Source es NULL para: '$decodedSource'")
+                    Log.e("SHIORI_APP", "Source es NULL para: '$sourceName'")
                     _state.update { it.copy(isLoading = false) }
                     return@launch
                 }
 
-                val baseManga = MangaInfo(title = title, url = url, coverUrl = "")
+                // 🔥 ERROR CORREGIDO: Añadimos sourceName al constructor de MangaInfo
+                val baseManga = MangaInfo(
+                    title = title,
+                    url = url,
+                    coverUrl = "",
+                    sourceName = sourceName
+                )
+
                 Log.d("SHIORI_APP", "Iniciando carga para: $title")
 
                 val detailedManga = source.fetchMangaDetails(baseManga)
                 Log.d("SHIORI_APP", "✅ fetchMangaDetails OK: ${detailedManga.title}")
 
                 val mangaFinal = if (detailedManga.title.isBlank() || detailedManga.title == "Manga") {
-                    detailedManga.copy(title = title)
+                    detailedManga.copy(title = title, sourceName = sourceName)
                 } else {
-                    detailedManga
+                    detailedManga.copy(sourceName = sourceName)
                 }
 
                 val chapterList = source.fetchChapterList(mangaFinal)

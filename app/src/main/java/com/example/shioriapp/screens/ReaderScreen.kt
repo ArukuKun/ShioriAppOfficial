@@ -28,31 +28,34 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
-import com.example.shioriapp.navigation.ReaderDataCache
+// 🔥 Eliminamos la importación del ReaderDataCache
 import com.example.shioriapp.viewmodel.ReaderViewModel
-import com.example.shioriapp.data.repository.LibraryManager // 🔥 Importación necesaria para el progreso
+import com.example.shioriapp.viewmodel.SharedReaderViewModel // 🔥 Importamos el nuevo ViewModel compartido
+import com.example.shioriapp.data.repository.LibraryManager
 
 @Composable
 fun ReaderScreen(
     sourceName: String,
-    onBack: () -> Unit,
-    viewModel: ReaderViewModel = viewModel()
+    sharedViewModel: SharedReaderViewModel, // 🔥 Usamos el ViewModel compartido
+    onBack: () -> Unit
 ) {
+    // Instanciamos el ReaderViewModel normal para la lógica propia de esta pantalla
+    val viewModel: ReaderViewModel = viewModel()
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     var showOverlay by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
-    // 1. Arrancamos el lector
+    // 1. Arrancamos el lector usando el SharedViewModel
     LaunchedEffect(Unit) {
-        val chapter = ReaderDataCache.currentChapter
-        val chapters = ReaderDataCache.chapters
+        val chapter = sharedViewModel.currentChapter
+        val chapters = sharedViewModel.chapters
         if (chapter != null) {
             viewModel.initReader(chapter, chapters, sourceName)
         }
     }
 
-    // 🔥 2. GUARDAR PROGRESO AUTOMÁTICO AL HACER SCROLL
+    // 2. GUARDAR PROGRESO AUTOMÁTICO AL HACER SCROLL
     LaunchedEffect(listState.firstVisibleItemIndex) {
         if (state.pages.isNotEmpty() && listState.firstVisibleItemIndex < state.pages.size) {
             val currentPage = state.pages[listState.firstVisibleItemIndex]
@@ -71,9 +74,9 @@ fun ReaderScreen(
         }
     }
 
-    // 🔥 3. REANUDAR EN LA PÁGINA CORRECTA (SCROLL AUTOMÁTICO AL ENTRAR)
+    // 3. REANUDAR EN LA PÁGINA CORRECTA (SCROLL AUTOMÁTICO AL ENTRAR)
     LaunchedEffect(state.pages) {
-        val chapter = ReaderDataCache.currentChapter
+        val chapter = sharedViewModel.currentChapter
         if (chapter != null && state.pages.isNotEmpty()) {
             val mangaUrlFallback = chapter.url.substringBeforeLast("/")
             val progress = LibraryManager.progressMap.value[mangaUrlFallback]
@@ -100,8 +103,9 @@ fun ReaderScreen(
             controller?.show(WindowInsetsCompat.Type.systemBars())
 
             viewModel.clearReader()
-            ReaderDataCache.currentChapter = null
-            ReaderDataCache.chapters = emptyList()
+            // 🔥 Limpiamos el SharedViewModel al salir del lector
+            sharedViewModel.currentChapter = null
+            sharedViewModel.chapters = emptyList()
         }
     }
 
@@ -125,7 +129,8 @@ fun ReaderScreen(
             if (state.pages.isNotEmpty() && firstVisibleIndex < state.pages.size) {
                 state.pages[firstVisibleIndex].chapter.name
             } else {
-                ReaderDataCache.currentChapter?.name ?: "Lector"
+                // 🔥 Usamos el SharedViewModel
+                sharedViewModel.currentChapter?.name ?: "Lector"
             }
         }
     }
@@ -200,8 +205,9 @@ fun ReaderScreen(
             val pageInfo = currentVisiblePageInfo!!
 
             val (capActual, capTotal) = remember(pageInfo.chapter.url) {
-                val total = ReaderDataCache.chapters.size
-                val index = ReaderDataCache.chapters.indexOfFirst { it.url == pageInfo.chapter.url }
+                // 🔥 Calculamos basándonos en el SharedViewModel
+                val total = sharedViewModel.chapters.size
+                val index = sharedViewModel.chapters.indexOfFirst { it.url == pageInfo.chapter.url }
                 val current = if (index != -1) total - index else 0
                 Pair(current, total)
             }

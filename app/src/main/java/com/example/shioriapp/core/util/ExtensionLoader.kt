@@ -218,8 +218,7 @@ class SourceAdapter(
                             author     = sManga.author ?: "",
                             status     = sManga.status,
                             sourceName = this.name,
-                            genres     = sManga.genre ?: ""
-                        )
+                            genres     = (sManga.genre ?: "").split(",").map { it.trim() }.filter { it.isNotBlank() }                        )
                     )
                 }
             }
