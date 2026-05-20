@@ -27,6 +27,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.shioriapp.R
+import com.example.shioriapp.domain.model.ChapterInfo
 import com.example.shioriapp.screens.*
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -44,8 +45,9 @@ object Routes {
 }
 
 object ReaderDataCache {
-    var chapters: List<com.example.shioriapp.domain.model.ChapterInfo> = emptyList()
-    var currentChapter: com.example.shioriapp.domain.model.ChapterInfo? = null
+    var currentChapter: ChapterInfo? = null
+    var chapters: List<ChapterInfo> = emptyList()
+    var mangaUrl: String = ""
 }
 
 @Composable
@@ -88,6 +90,7 @@ fun AppNavigation() {
                 onChapterClick = { chapter, chapters ->
                     ReaderDataCache.currentChapter = chapter
                     ReaderDataCache.chapters = chapters
+                    ReaderDataCache.mangaUrl = mangaUrl
 
                     val safeSource = if (sourceName.isNotBlank()) sourceName else "FuenteDesconocida"
                     val encSource = URLEncoder.encode(safeSource, "UTF-8")
@@ -156,7 +159,6 @@ fun MainTabsScreen(rootNavController: NavHostController) {
                     }
                 },
                 actions = {
-                    // 🔥 Conecta el botón a la búsqueda global
                     IconButton(onClick = { rootNavController.navigate(Routes.SEARCH) }) {
                         Icon(Icons.Default.Search, "Buscar")
                     }

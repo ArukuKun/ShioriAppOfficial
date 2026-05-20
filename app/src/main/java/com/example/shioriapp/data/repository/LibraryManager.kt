@@ -38,12 +38,20 @@ object LibraryManager {
         isInitialized = true
     }
 
-    // ── Guardar progreso al leer un capítulo ──────────────────────────────────
+    @Serializable
+    data class ReadingProgress(
+        val lastChapterUrl: String,
+        val lastPage: Int,
+        val totalPages: Int = 0,
+        val readChapters: Set<String> = emptySet()
+    )
+
     fun saveProgress(
         context: Context,
         mangaUrl: String,
         chapterUrl: String,
         page: Int,
+        totalPages: Int = 0,
         isFinished: Boolean = false
     ) {
         val current = _progressMap.value.toMutableMap()
@@ -58,6 +66,7 @@ object LibraryManager {
         current[mangaUrl] = ReadingProgress(
             lastChapterUrl = chapterUrl,
             lastPage = page,
+            totalPages = totalPages,      // ← NUEVO
             readChapters = newReadChapters
         )
 

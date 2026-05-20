@@ -30,7 +30,7 @@ import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.example.shioriapp.navigation.ReaderDataCache
 import com.example.shioriapp.viewmodel.ReaderViewModel
-import com.example.shioriapp.data.repository.LibraryManager // 🔥 Importación necesaria para el progreso
+import com.example.shioriapp.data.repository.LibraryManager
 
 @Composable
 fun ReaderScreen(
@@ -52,56 +52,67 @@ fun ReaderScreen(
         }
     }
 
-    // 🔥 2. GUARDAR PROGRESO AUTOMÁTICO AL HACER SCROLL
     LaunchedEffect(listState.firstVisibleItemIndex) {
         if (state.pages.isNotEmpty() && listState.firstVisibleItemIndex < state.pages.size) {
             val currentPage = state.pages[listState.firstVisibleItemIndex]
-            val isLastPage = listState.firstVisibleItemIndex >= state.pages.size - 1
 
-            // Usamos la URL base del capítulo asumiendo que coincide con la del manga
-            val mangaUrlFallback = currentPage.chapter.url.substringBeforeLast("/")
+            val mangaUrl = ReaderDataCache.mangaUrl
+
+            val isFinished = currentPage.displayIndex >= currentPage.totalPages
 
             LibraryManager.saveProgress(
                 context = context,
-                mangaUrl = mangaUrlFallback,
+                mangaUrl = mangaUrl,
                 chapterUrl = currentPage.chapter.url,
-                page = listState.firstVisibleItemIndex,
-                isFinished = isLastPage
+                page = currentPage.displayIndex,
+                totalPages = currentPage.totalPages,
+                isFinished = isFinished
             )
         }
     }
 
-    // 🔥 3. REANUDAR EN LA PÁGINA CORRECTA (SCROLL AUTOMÁTICO AL ENTRAR)
     LaunchedEffect(state.pages) {
         val chapter = ReaderDataCache.currentChapter
         if (chapter != null && state.pages.isNotEmpty()) {
-            val mangaUrlFallback = chapter.url.substringBeforeLast("/")
-            val progress = LibraryManager.progressMap.value[mangaUrlFallback]
+            val mangaUrl = ReaderDataCache.mangaUrl  // ← usar el real
+            val progress = LibraryManager.progressMap.value[mangaUrl]
 
             if (progress != null && progress.lastChapterUrl == chapter.url && progress.lastPage > 0) {
-                // Hacemos scroll directamente a la página donde se quedó
-                listState.scrollToItem(progress.lastPage)
+                val targetIndex = state.pages.indexOfFirst {
+                    it.chapter.url == chapter.url && it.displayIndex == progress.lastPage
+                }.takeIf { it >= 0 } ?: 0
+
+                if (targetIndex > 0) listState.scrollToItem(targetIndex)
             }
         }
     }
 
-    // 4. Limpiamos al salir y manejamos las barras inmersivas
     DisposableEffect(Unit) {
         val activity = context as? Activity
         val window = activity?.window
         val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
 
-        controller?.let {
-            it.hide(WindowInsetsCompat.Type.systemBars())
-            it.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        }
-
         onDispose {
             controller?.show(WindowInsetsCompat.Type.systemBars())
-
             viewModel.clearReader()
             ReaderDataCache.currentChapter = null
             ReaderDataCache.chapters = emptyList()
+            ReaderDataCache.mangaUrl = ""
+        }
+    }
+
+    LaunchedEffect(showOverlay) {
+        val activity = context as? Activity
+        val window = activity?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+
+        controller?.let {
+            if (showOverlay) {
+                it.show(WindowInsetsCompat.Type.systemBars())
+            } else {
+                it.hide(WindowInsetsCompat.Type.systemBars())
+                it.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
         }
     }
 
@@ -228,10 +239,13 @@ fun ReaderScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.85f))
-                    .statusBarsPadding()
+                    .background(Color.Black.copy(alpha = 0.85f)) // 1. Aplica el fondo negro
+                    .statusBarsPadding() // 2. Empuja el contenido hacia abajo respetando la barra de estado
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(vertical = 8.dp) // Opcional: un pequeño respiro extra
+                ) {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
                     }

@@ -70,13 +70,10 @@ fun MangaDetailsScreen(
     val progressMap by LibraryManager.progressMap.collectAsState()
     val mangaProgress = progressMap[mangaUrl]
 
-    // Lista para mostrar (respeta el filtro visual)
     val sortedChapters = remember(state.chapters, sortDescending) {
-        // La fuente devuelve descendente por defecto: [cap8, cap7... cap1]
         if (sortDescending) state.chapters else state.chapters.reversed()
     }
 
-    // Lista siempre ascendente para cálculos de progreso: [cap1, cap2... cap8]
     val chaptersAsc = remember(state.chapters) { state.chapters.reversed() }
 
     // ── Lógica de progreso ───────────────────────────────────────────────────
@@ -85,14 +82,15 @@ fun MangaDetailsScreen(
     val allRead = hasProgress && chaptersAsc.isNotEmpty() &&
             chaptersAsc.all { it.url in readChapters }
 
-    // Capítulo a abrir con el FAB (siempre calculado en orden ascendente)
     val chapterToOpen: ChapterInfo? = when {
         chaptersAsc.isEmpty() -> null
         hasProgress -> {
             val lastReadIndex = chaptersAsc
                 .indexOfFirst { it.url == mangaProgress?.lastChapterUrl }
+            val lastChapterFinished = mangaProgress?.lastChapterUrl in readChapters
+
             when {
-                lastReadIndex >= 0 && lastReadIndex < chaptersAsc.lastIndex ->
+                lastReadIndex >= 0 && lastReadIndex < chaptersAsc.lastIndex && lastChapterFinished ->
                     chaptersAsc[lastReadIndex + 1]
                 else ->
                     chaptersAsc[lastReadIndex.coerceAtLeast(0)]
@@ -114,7 +112,6 @@ fun MangaDetailsScreen(
         Scaffold(
             containerColor = Color.Transparent,
 
-            // ── FAB: Comenzar / Reanudar / Releer ───────────────────────────
             floatingActionButton = {
                 if (chapterToOpen != null) {
                     ExtendedFloatingActionButton(
@@ -131,9 +128,9 @@ fun MangaDetailsScreen(
                         icon = {
                             Icon(
                                 imageVector = when {
-                                    allRead     -> Icons.Default.Replay
+                                    allRead -> Icons.Default.Replay
                                     hasProgress -> Icons.Default.PlayArrow
-                                    else        -> Icons.Default.Book
+                                    else -> Icons.Default.Book
                                 },
                                 contentDescription = null
                             )
@@ -141,9 +138,9 @@ fun MangaDetailsScreen(
                         text = {
                             Text(
                                 when {
-                                    allRead     -> "Releer"
+                                    allRead -> "Releer"
                                     hasProgress -> "Reanudar"
-                                    else        -> "Comenzar a leer"
+                                    else -> "Comenzar a leer"
                                 }
                             )
                         }
@@ -173,8 +170,9 @@ fun MangaDetailsScreen(
                             IconButton(
                                 onClick = { showSortMenu = true },
                                 modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .statusBarsPadding()
                                     .padding(8.dp)
-                                    .background(Color.Black.copy(0.4f), RoundedCornerShape(50))
                             ) {
                                 Icon(
                                     Icons.Default.FilterList,
@@ -261,9 +259,9 @@ fun MangaDetailsScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                         val statusInt = state.manga?.status ?: 0
                         val (statusText, statusColor) = when (statusInt) {
-                            1    -> "En curso"    to Color(0xFF4CAF50)
-                            2, 4 -> "Completado"  to Color(0xFFF44336)
-                            6    -> "Pausado"     to Color(0xFFFF9800)
+                            1 -> "En curso" to Color(0xFF4CAF50)
+                            2, 4 -> "Completado" to Color(0xFFF44336)
+                            6 -> "Pausado" to Color(0xFFFF9800)
                             else -> "Desconocido" to Color.Gray
                         }
                         Surface(
@@ -279,7 +277,12 @@ fun MangaDetailsScreen(
                                     drawCircle(color = statusColor, radius = 3.dp.toPx())
                                 }
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text(statusText, color = statusColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    statusText,
+                                    color = statusColor,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
@@ -319,7 +322,10 @@ fun MangaDetailsScreen(
                         label = if (isFavorite) "En Biblioteca" else "Añadir",
                         onClick = {
                             state.manga?.let { manga ->
-                                LibraryManager.toggleManga(localContext, manga.copy(sourceName = sourceName))
+                                LibraryManager.toggleManga(
+                                    localContext,
+                                    manga.copy(sourceName = sourceName)
+                                )
                             }
                         }
                     )
@@ -358,7 +364,10 @@ fun MangaDetailsScreen(
                             ) {
                                 Text(
                                     text = tag, color = Color.White,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    modifier = Modifier.padding(
+                                        horizontal = 12.dp,
+                                        vertical = 6.dp
+                                    ),
                                     fontSize = 12.sp
                                 )
                             }
@@ -413,18 +422,20 @@ fun MangaDetailsScreen(
                 }
 
                 sortedChapters.forEach { chapter ->
+                    val isCurrentChapter = mangaProgress?.lastChapterUrl == chapter.url
                     ChapterItem(
                         chapter = chapter,
                         isRead = readChapters.contains(chapter.url),
-                        isCurrent = mangaProgress?.lastChapterUrl == chapter.url,
+                        isCurrent = isCurrentChapter,
+                        // ↓ NUEVO: pasar progreso de página solo para el capítulo actual
+                        currentPage = if (isCurrentChapter) mangaProgress?.lastPage ?: 0 else 0,
+                        totalPages = if (isCurrentChapter) mangaProgress?.totalPages ?: 0 else 0,
                         onToggleRead = {
                             LibraryManager.toggleChapterRead(localContext, mangaUrl, chapter.url)
                         },
                         onClick = { onChapterClick(chapter, state.chapters) }
                     )
                 }
-
-                Spacer(modifier = Modifier.height(80.dp))
             }
         }
     }
@@ -437,6 +448,8 @@ fun ChapterItem(
     chapter: ChapterInfo,
     isRead: Boolean,
     isCurrent: Boolean,
+    currentPage: Int = 0,
+    totalPages: Int = 0,
     onToggleRead: () -> Unit,
     onClick: () -> Unit
 ) {
@@ -451,7 +464,6 @@ fun ChapterItem(
                 .alpha(if (isRead && !isCurrent) 0.4f else 1f),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Barra lateral colorida si es el capítulo actual
             if (isCurrent) {
                 Box(
                     modifier = Modifier
@@ -476,12 +488,28 @@ fun ChapterItem(
                     fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
                 )
                 when {
-                    isCurrent -> Text(
-                        "Leyendo",
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                    isCurrent -> {
+                        val pageText = when {
+                            totalPages > 0  -> "Pág. $currentPage / $totalPages"
+                            currentPage > 0 -> "Pág. $currentPage"
+                            else            -> ""
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Leyendo",
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            if (pageText.isNotEmpty()) {
+                                Text(
+                                    "  ·  $pageText",
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
                     isRead -> Text("Leído", color = Color.Gray, fontSize = 11.sp)
                 }
             }
