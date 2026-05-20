@@ -34,14 +34,9 @@ fun ExploreScreen(
     val state by viewModel.state.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-
-        // 🔥 ESTO BAJA EL CONTENIDO: Agregamos un pequeño espacio arriba
-        // para compensar la barra superior transparente.
         Spacer(modifier = Modifier.height(16.dp))
 
-        // ── CATEGORÍAS ──
         LazyRow(
-            // Ajustamos el padding para que arriba y abajo esté equilibrado
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
@@ -57,9 +52,8 @@ fun ExploreScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp)) // Espacio entre chips y los mangas
+        Spacer(modifier = Modifier.height(8.dp))
 
-        // ── GRILLA ──
         if (state.isLoading) {
             Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
         } else if (state.displayMangas.isEmpty()) {
