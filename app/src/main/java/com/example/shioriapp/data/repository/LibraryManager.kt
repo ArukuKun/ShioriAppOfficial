@@ -8,12 +8,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.Serializable
+import android.util.Log
 
 @Serializable
 data class ReadingProgress(
     val lastChapterUrl: String,
     val lastPage: Int,
-    val readChapters: Set<String> = emptySet()
+    val totalPages: Int = 0,
+    val readChapters: Set<String> = emptySet(),
+    val lastReadTime: Long = 0L,     // Para ordenar "Seguir Leyendo"
+    val totalChapters: Int = 0       // Para saber si ya leímos todo
 )
 
 object LibraryManager {
@@ -22,6 +26,9 @@ object LibraryManager {
 
     private val _progressMap = MutableStateFlow<Map<String, ReadingProgress>>(emptyMap())
     val progressMap: StateFlow<Map<String, ReadingProgress>> = _progressMap.asStateFlow()
+
+    private val _isChapterSortDescending = MutableStateFlow(true)
+    val isChapterSortDescending: StateFlow<Boolean> = _isChapterSortDescending.asStateFlow()
 
     private var isInitialized = false
 
@@ -35,16 +42,24 @@ object LibraryManager {
         val jsonProg = prefs.getString("reading_progress", "{}") ?: "{}"
         _progressMap.value = try { Json.decodeFromString(jsonProg) } catch (e: Exception) { emptyMap() }
 
+        // 🔥 LOG: Verificamos qué valor se carga al iniciar la app
+        val isSortDesc = prefs.getBoolean("sort_descending", true)
+        Log.d("SHIORI_APP", "LibraryManager(init): Orden guardado recuperado -> isDescending = $isSortDesc")
+        _isChapterSortDescending.value = isSortDesc
+
         isInitialized = true
     }
 
-    @Serializable
-    data class ReadingProgress(
-        val lastChapterUrl: String,
-        val lastPage: Int,
-        val totalPages: Int = 0,
-        val readChapters: Set<String> = emptySet()
-    )
+    fun setChapterSortDescending(context: Context, isDescending: Boolean) {
+        // 🔥 LOG: Verificamos cuándo y a qué valor se cambia
+        Log.d("SHIORI_APP", "LibraryManager(setSort): Cambiando orden a -> isDescending = $isDescending")
+
+        _isChapterSortDescending.value = isDescending
+        context.getSharedPreferences("shiori_library", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("sort_descending", isDescending)
+            .apply()
+    }
 
     fun saveProgress(
         context: Context,
@@ -52,7 +67,8 @@ object LibraryManager {
         chapterUrl: String,
         page: Int,
         totalPages: Int = 0,
-        isFinished: Boolean = false
+        isFinished: Boolean = false,
+        totalChapters: Int = 0 // 🔥 Nuevo parámetro opcional
     ) {
         val current = _progressMap.value.toMutableMap()
         val existing = current[mangaUrl] ?: ReadingProgress(chapterUrl, page)
@@ -63,33 +79,42 @@ object LibraryManager {
             existing.readChapters
         }
 
-        current[mangaUrl] = ReadingProgress(
+        current[mangaUrl] = existing.copy(
             lastChapterUrl = chapterUrl,
             lastPage = page,
-            totalPages = totalPages,      // ← NUEVO
-            readChapters = newReadChapters
+            totalPages = totalPages,
+            readChapters = newReadChapters,
+            lastReadTime = System.currentTimeMillis(), // Guarda el tiempo exacto en que se leyó
+            totalChapters = if (totalChapters > 0) totalChapters else existing.totalChapters
         )
 
         _progressMap.value = current
         persist(context, current)
     }
 
-    // ── Marcar / desmarcar un capítulo manualmente ───────────────────────────
+    // 🔥 NUEVA FUNCIÓN: Llama a esto cuando cargues la lista de capítulos para actualizar el total
+    fun updateTotalChapters(context: Context, mangaUrl: String, total: Int) {
+        val current = _progressMap.value.toMutableMap()
+        val existing = current[mangaUrl]
+        if (existing != null && existing.totalChapters != total) {
+            current[mangaUrl] = existing.copy(totalChapters = total)
+            _progressMap.value = current
+            persist(context, current)
+        }
+    }
+
     fun toggleChapterRead(context: Context, mangaUrl: String, chapterUrl: String) {
         val current = _progressMap.value.toMutableMap()
         val existing = current[mangaUrl]
             ?: ReadingProgress(lastChapterUrl = chapterUrl, lastPage = 0)
 
         val newReadChapters = if (chapterUrl in existing.readChapters) {
-            existing.readChapters - chapterUrl          // desmarcar
+            existing.readChapters - chapterUrl
         } else {
-            existing.readChapters + chapterUrl          // marcar
+            existing.readChapters + chapterUrl
         }
 
-        // Si desmarcamos el que era "último leído", apuntar al más reciente del resto
-        val newLastChapter = if (
-            chapterUrl == existing.lastChapterUrl && chapterUrl !in newReadChapters
-        ) {
+        val newLastChapter = if (chapterUrl == existing.lastChapterUrl && chapterUrl !in newReadChapters) {
             newReadChapters.lastOrNull() ?: ""
         } else {
             existing.lastChapterUrl
@@ -97,15 +122,14 @@ object LibraryManager {
 
         current[mangaUrl] = existing.copy(
             readChapters = newReadChapters,
-            lastChapterUrl = newLastChapter
+            lastChapterUrl = newLastChapter,
+            lastReadTime = System.currentTimeMillis() // Actualiza tiempo manual
         )
 
         _progressMap.value = current
         persist(context, current)
     }
 
-    // ── Marcar TODOS los capítulos como leídos ───────────────────────────────
-    // chapterUrls debe venir en orden DESCENDENTE (el primero = más reciente)
     fun markAllChaptersRead(context: Context, mangaUrl: String, chapterUrls: List<String>) {
         if (chapterUrls.isEmpty()) return
 
@@ -115,18 +139,21 @@ object LibraryManager {
 
         current[mangaUrl] = existing.copy(
             readChapters = existing.readChapters + chapterUrls.toSet(),
-            lastChapterUrl = chapterUrls.first()        // capítulo más reciente
+            lastChapterUrl = chapterUrls.first(),
+            lastReadTime = System.currentTimeMillis()
         )
 
         _progressMap.value = current
         persist(context, current)
     }
+
     fun unmarkAllChapters(context: Context, mangaUrl: String) {
         val current = _progressMap.value.toMutableMap()
         current.remove(mangaUrl)
         _progressMap.value = current
         persist(context, current)
     }
+
     fun toggleManga(context: Context, manga: MangaInfo) {
         val current = _library.value.toMutableList()
         val exists = current.find { it.url == manga.url && it.sourceName == manga.sourceName }

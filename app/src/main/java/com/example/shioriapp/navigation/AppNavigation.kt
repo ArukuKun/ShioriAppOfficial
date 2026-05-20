@@ -39,9 +39,10 @@ object Routes {
     const val MENSAJERIA = "mensajeria"
     const val MAS = "mas"
     const val REPOSITORY = "repository"
-    const val DETAILS = "manga_details/{sourceName}?mangaUrl={mangaUrl}&mangaTitle={mangaTitle}"
+    // 🔥 AÑADIMOS la variable resume a la ruta
+    const val DETAILS = "manga_details/{sourceName}?mangaUrl={mangaUrl}&mangaTitle={mangaTitle}&resume={resume}"
     const val READER = "reader/{sourceName}"
-    const val SEARCH = "search" // 🔥 Nueva Ruta
+    const val SEARCH = "search"
 }
 
 object ReaderDataCache {
@@ -72,12 +73,16 @@ fun AppNavigation() {
             arguments = listOf(
                 navArgument("sourceName") { type = NavType.StringType },
                 navArgument("mangaUrl") { type = NavType.StringType; nullable = true; defaultValue = "" },
-                navArgument("mangaTitle") { type = NavType.StringType; nullable = true; defaultValue = "" }
+                navArgument("mangaTitle") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("resume") { type = NavType.BoolType; defaultValue = false }
             )
         ) { backStackEntry ->
             val sourceName = URLDecoder.decode(backStackEntry.arguments?.getString("sourceName") ?: "", "UTF-8")
             val encodedUrl = backStackEntry.arguments?.getString("mangaUrl") ?: ""
             val encodedTitle = backStackEntry.arguments?.getString("mangaTitle") ?: ""
+            val resume = backStackEntry.arguments?.getBoolean("resume") ?: false
+
+            backStackEntry.arguments?.putBoolean("resume", false)
 
             val mangaUrl = URLDecoder.decode(encodedUrl, "UTF-8")
             val mangaTitle = URLDecoder.decode(encodedTitle, "UTF-8")
@@ -86,6 +91,7 @@ fun AppNavigation() {
                 mangaUrl = mangaUrl,
                 sourceName = sourceName,
                 mangaTitle = mangaTitle,
+                autoResume = resume,
                 onBack = { rootNavController.popBackStack() },
                 onChapterClick = { chapter, chapters ->
                     ReaderDataCache.currentChapter = chapter
@@ -120,7 +126,6 @@ fun AppNavigation() {
             ExtensionsScreen(onBack = { rootNavController.popBackStack() })
         }
 
-        // 🔥 PANTALLA DE BUSQUEDA GLOBAL
         composable(Routes.SEARCH) {
             SearchScreen(
                 onBack = { rootNavController.popBackStack() },
@@ -128,7 +133,7 @@ fun AppNavigation() {
                     val encUrl = URLEncoder.encode(manga.url, "UTF-8")
                     val encTitle = URLEncoder.encode(manga.title, "UTF-8")
                     val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
-                    rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle")
+                    rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=false")
                 }
             )
         }
@@ -204,19 +209,27 @@ fun MainTabsScreen(rootNavController: NavHostController) {
             exitTransition = { fadeOut(tween(0)) }
         ) {
             composable(Routes.HOME) {
-                HomeScreen(onMangaClick = { manga ->
-                    val encUrl = URLEncoder.encode(manga.url, "UTF-8")
-                    val encTitle = URLEncoder.encode(manga.title, "UTF-8")
-                    val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
-                    rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle")
-                })
+                HomeScreen(
+                    onMangaClick = { manga ->
+                        val encUrl = URLEncoder.encode(manga.url, "UTF-8")
+                        val encTitle = URLEncoder.encode(manga.title, "UTF-8")
+                        val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
+                        rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=false")
+                    },
+                    onResumeClick = { manga ->
+                        val encUrl = URLEncoder.encode(manga.url, "UTF-8")
+                        val encTitle = URLEncoder.encode(manga.title, "UTF-8")
+                        val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
+                        rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=true") // 🔥 ESTO HACE LA MAGIA
+                    }
+                )
             }
             composable(Routes.EXPLORE) {
                 ExploreScreen(onMangaClick = { url, source, title ->
                     val encUrl    = URLEncoder.encode(url,    "UTF-8")
                     val encTitle  = URLEncoder.encode(title,  "UTF-8")
                     val encSource = URLEncoder.encode(source, "UTF-8")
-                    rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle")
+                    rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=false")
                 })
             }
             composable(Routes.MENSAJERIA) { MensajeriaScreen() }

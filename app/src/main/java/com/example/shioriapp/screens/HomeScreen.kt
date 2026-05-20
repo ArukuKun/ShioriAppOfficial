@@ -4,7 +4,9 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,7 +25,8 @@ import com.example.shioriapp.data.repository.LibraryManager
 
 @Composable
 fun HomeScreen(
-    onMangaClick: (MangaInfo) -> Unit
+    onMangaClick: (MangaInfo) -> Unit,
+    onResumeClick: (MangaInfo) -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -32,19 +35,66 @@ fun HomeScreen(
     }
 
     val biblioteca by LibraryManager.library.collectAsState()
+    val progressMap by LibraryManager.progressMap.collectAsState()
+
+    // 🔥 ALGORITMO: Filtra y ordena los mangas en tiempo real
+    val continueReadingList = remember(biblioteca, progressMap) {
+        biblioteca.filter { manga ->
+            val progress = progressMap[manga.url] ?: return@filter false
+
+            // ¿Se terminó de leer el último capítulo guardado?
+            val isLastChapterFinished = progress.lastChapterUrl in progress.readChapters
+            // ¿Hay capítulos nuevos o sin leer disponibles?
+            val hasUnreadChapters = progress.totalChapters > progress.readChapters.size
+
+            // Aparecerá si dejaste un capítulo a medias O si hay capítulos sin leer
+            !isLastChapterFinished || hasUnreadChapters
+        }.sortedByDescending { manga ->
+            progressMap[manga.url]?.lastReadTime ?: 0L
+        }
+    }
 
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 110.dp),
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding(),
-        contentPadding = PaddingValues(16.dp),
+            .background(MaterialTheme.colorScheme.background),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 0.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        if (continueReadingList.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    text = "Seguir Leyendo",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(continueReadingList) { manga ->
+                        LibraryMangaCard(
+                            manga = manga,
+                            onClick = { onResumeClick(manga) },
+                            modifier = Modifier.width(110.dp)
+                        )
+                    }
+                }
+            }
+            // Divisor estético
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color.Gray.copy(alpha = 0.2f))
+            }
+        }
+
+        // SECCIÓN: Tu Biblioteca General
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Text("Tu Biblioteca", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp))
+            Text("Tu Biblioteca", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
         }
 
         if (biblioteca.isEmpty()) {
@@ -56,7 +106,6 @@ fun HomeScreen(
                 LibraryMangaCard(
                     manga = manga,
                     onClick = {
-                        // 🔥 SISTEMA DE AUTOCURACIÓN: Elimina mangas de pruebas anteriores que se guardaron mal
                         if (manga.sourceName.isBlank()) {
                             LibraryManager.toggleManga(context, manga)
                             Toast.makeText(context, "Manga corrupto eliminado. Búscalo de nuevo para leerlo.", Toast.LENGTH_LONG).show()

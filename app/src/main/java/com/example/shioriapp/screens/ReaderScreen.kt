@@ -31,6 +31,7 @@ import coil.request.ImageRequest
 import com.example.shioriapp.navigation.ReaderDataCache
 import com.example.shioriapp.viewmodel.ReaderViewModel
 import com.example.shioriapp.data.repository.LibraryManager
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 @Composable
 fun ReaderScreen(
@@ -43,7 +44,10 @@ fun ReaderScreen(
     var showOverlay by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
-    // 1. Arrancamos el lector
+    // 🔥 Bandera de control para evitar que el índice 0 inicial pise el progreso antes del scroll
+    var hasRestoredInitialPosition by remember { mutableStateOf(false) }
+
+    // 1. Arrancamos el lector obteniendo los datos de la caché
     LaunchedEffect(Unit) {
         val chapter = ReaderDataCache.currentChapter
         val chapters = ReaderDataCache.chapters
@@ -52,12 +56,37 @@ fun ReaderScreen(
         }
     }
 
-    LaunchedEffect(listState.firstVisibleItemIndex) {
-        if (state.pages.isNotEmpty() && listState.firstVisibleItemIndex < state.pages.size) {
-            val currentPage = state.pages[listState.firstVisibleItemIndex]
-
+    LaunchedEffect(state.pages) {
+        if (state.pages.isNotEmpty() && !hasRestoredInitialPosition) {
+            val chapter = ReaderDataCache.currentChapter
             val mangaUrl = ReaderDataCache.mangaUrl
+            val progress = LibraryManager.progressMap.value[mangaUrl]
 
+            if (chapter != null && progress != null && progress.lastChapterUrl == chapter.url && progress.lastPage > 0) {
+                val targetIndex = state.pages.indexOfFirst {
+                    it.chapter.url == chapter.url && it.displayIndex == progress.lastPage
+                }
+
+                kotlinx.coroutines.delay(150)
+
+                if (targetIndex >= 0) {
+                    listState.scrollToItem(targetIndex)
+                } else {
+                    val safeIndex = progress.lastPage.coerceIn(0, state.pages.lastIndex)
+                    listState.scrollToItem(safeIndex)
+                }
+                hasRestoredInitialPosition = true
+            } else {
+                hasRestoredInitialPosition = true
+            }
+        }
+    }
+
+
+    LaunchedEffect(listState.firstVisibleItemIndex, hasRestoredInitialPosition) {
+        if (hasRestoredInitialPosition && state.pages.isNotEmpty() && listState.firstVisibleItemIndex < state.pages.size) {
+            val currentPage = state.pages[listState.firstVisibleItemIndex]
+            val mangaUrl = ReaderDataCache.mangaUrl
             val isFinished = currentPage.displayIndex >= currentPage.totalPages
 
             LibraryManager.saveProgress(
@@ -68,22 +97,6 @@ fun ReaderScreen(
                 totalPages = currentPage.totalPages,
                 isFinished = isFinished
             )
-        }
-    }
-
-    LaunchedEffect(state.pages) {
-        val chapter = ReaderDataCache.currentChapter
-        if (chapter != null && state.pages.isNotEmpty()) {
-            val mangaUrl = ReaderDataCache.mangaUrl  // ← usar el real
-            val progress = LibraryManager.progressMap.value[mangaUrl]
-
-            if (progress != null && progress.lastChapterUrl == chapter.url && progress.lastPage > 0) {
-                val targetIndex = state.pages.indexOfFirst {
-                    it.chapter.url == chapter.url && it.displayIndex == progress.lastPage
-                }.takeIf { it >= 0 } ?: 0
-
-                if (targetIndex > 0) listState.scrollToItem(targetIndex)
-            }
         }
     }
 
@@ -225,7 +238,7 @@ fun ReaderScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 32.dp)
-                    .background(Color(0xFF121212).copy(alpha = 0.8f), androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                    .background(Color(0xFF121212).copy(alpha = 0.8f), RoundedCornerShape(16.dp))
                     .padding(horizontal = 12.dp, vertical = 4.dp)
             )
         }
@@ -239,12 +252,12 @@ fun ReaderScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.85f)) // 1. Aplica el fondo negro
-                    .statusBarsPadding() // 2. Empuja el contenido hacia abajo respetando la barra de estado
+                    .background(Color.Black.copy(alpha = 0.85f))
+                    .statusBarsPadding()
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(vertical = 8.dp) // Opcional: un pequeño respiro extra
+                    modifier = Modifier.padding(vertical = 8.dp)
                 ) {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
