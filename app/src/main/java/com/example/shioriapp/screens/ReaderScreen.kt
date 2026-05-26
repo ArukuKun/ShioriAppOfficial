@@ -27,12 +27,13 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.SubcomposeAsyncImage
+import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.shioriapp.navigation.ReaderDataCache
 import com.example.shioriapp.viewmodel.ReaderViewModel
 import com.example.shioriapp.data.repository.LibraryManager
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.alpha
 
 @Composable
 fun ReaderScreen(
@@ -44,23 +45,24 @@ fun ReaderScreen(
     val context = LocalContext.current
     var showOverlay by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+
     var hasRestoredInitialPosition by remember { mutableStateOf(false) }
+    // 🔥 CANDADO DE PROGRESO
+    var isReadyToSaveProgress by remember { mutableStateOf(false) }
 
     val activity = context as? Activity
     val window = activity?.window
     val controller = remember(window) { window?.let { WindowCompat.getInsetsController(it, it.decorView) } }
 
-    // ── 1. INMERSIÓN TOTAL DESDE EL INICIO ──────────────────────────────────
+    var anchorKey by remember { mutableStateOf<String?>(null) }
+    var anchorOffset by remember { mutableIntStateOf(0) }
+    var isPrepending by remember { mutableStateOf(false) }
+
     DisposableEffect(Unit) {
-        // Ocultamos las barras (hora, batería y botones de navegación) inmediatamente
         controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         controller?.hide(WindowInsetsCompat.Type.systemBars())
 
         onDispose {
-            // Restauramos el sistema al salir (limpieza de seguridad)
-            controller?.show(WindowInsetsCompat.Type.systemBars())
-            window?.decorView?.requestApplyInsets()
-
             viewModel.clearReader()
             ReaderDataCache.currentChapter = null
             ReaderDataCache.chapters = emptyList()
@@ -68,19 +70,24 @@ fun ReaderScreen(
         }
     }
 
-    // ── 2. SALIDA SEGURA CON GESTOS O BOTÓN ─────────────────────────────────
-    // Atrapamos el gesto de deslizar el borde de la pantalla ANTES de que cambie de ventana
+    LaunchedEffect(showOverlay) {
+        controller?.let {
+            if (showOverlay) {
+                it.show(WindowInsetsCompat.Type.systemBars())
+            } else {
+                it.hide(WindowInsetsCompat.Type.systemBars())
+                it.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        }
+    }
+
     val safeExit = {
         controller?.show(WindowInsetsCompat.Type.systemBars())
-        window?.decorView?.requestApplyInsets()
         onBack()
     }
 
-    BackHandler {
-        safeExit()
-    }
+    BackHandler { safeExit() }
 
-    // ── LÓGICA DE DATOS Y LECTURA ───────────────────────────────────────────
     LaunchedEffect(Unit) {
         val chapter = ReaderDataCache.currentChapter
         val chapters = ReaderDataCache.chapters
@@ -89,8 +96,17 @@ fun ReaderScreen(
         }
     }
 
+    // ── LÓGICA DE POSICIONAMIENTO Y ANCLAJE ───────────────────────────────
     LaunchedEffect(state.pages) {
-        if (state.pages.isNotEmpty() && !hasRestoredInitialPosition) {
+        if (isPrepending && anchorKey != null) {
+            val newIndex = state.pages.indexOfFirst { it.uniqueId == anchorKey }
+            if (newIndex >= 0) {
+                listState.scrollToItem(newIndex, anchorOffset)
+            }
+            isPrepending = false
+            anchorKey = null
+
+        } else if (state.pages.isNotEmpty() && !hasRestoredInitialPosition) {
             val chapter = ReaderDataCache.currentChapter
             val mangaUrl = ReaderDataCache.mangaUrl
             val progress = LibraryManager.progressMap.value[mangaUrl]
@@ -99,24 +115,21 @@ fun ReaderScreen(
                 val targetIndex = state.pages.indexOfFirst {
                     it.chapter.url == chapter.url && it.displayIndex == progress.lastPage
                 }
-
-                kotlinx.coroutines.delay(150)
-
                 if (targetIndex >= 0) {
                     listState.scrollToItem(targetIndex)
-                } else {
-                    val safeIndex = progress.lastPage.coerceIn(0, state.pages.lastIndex)
-                    listState.scrollToItem(safeIndex)
                 }
-                hasRestoredInitialPosition = true
-            } else {
-                hasRestoredInitialPosition = true
             }
+            hasRestoredInitialPosition = true
+
+            // 🔥 CANDADO DE TITANIO: 2 segundos de gracia para evitar reseteos de progreso
+            kotlinx.coroutines.delay(2000)
+            isReadyToSaveProgress = true
         }
     }
 
-    LaunchedEffect(listState.firstVisibleItemIndex, hasRestoredInitialPosition) {
-        if (hasRestoredInitialPosition && state.pages.isNotEmpty() && listState.firstVisibleItemIndex < state.pages.size) {
+    // ── GUARDADO DE PROGRESO SEGURO ─────────────────────────────────────────
+    LaunchedEffect(listState.firstVisibleItemIndex, isReadyToSaveProgress) {
+        if (isReadyToSaveProgress && state.pages.isNotEmpty() && listState.firstVisibleItemIndex < state.pages.size) {
             val currentPage = state.pages[listState.firstVisibleItemIndex]
             val mangaUrl = ReaderDataCache.mangaUrl
             val isFinished = currentPage.displayIndex >= currentPage.totalPages
@@ -132,11 +145,29 @@ fun ReaderScreen(
         }
     }
 
+    // ── DETECCIÓN DE SCROLL ─────────────────────────────────────────────────
+    val shouldLoadPrevious by remember {
+        derivedStateOf {
+            val firstVisibleItem = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: 0
+            hasRestoredInitialPosition && state.pages.isNotEmpty() && firstVisibleItem <= 1
+        }
+    }
+
     val shouldLoadMore by remember {
         derivedStateOf {
             val totalItems = listState.layoutInfo.totalItemsCount
             val lastVisibleItem = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             totalItems > 0 && lastVisibleItem >= totalItems - 3
+        }
+    }
+
+    LaunchedEffect(shouldLoadPrevious) {
+        if (shouldLoadPrevious && !state.isLoadingPrev) {
+            val firstItem = listState.layoutInfo.visibleItemsInfo.firstOrNull()
+            anchorKey = firstItem?.key as? String
+            anchorOffset = firstItem?.offset ?: 0
+            isPrepending = true
+            viewModel.loadPrev()
         }
     }
 
@@ -146,8 +177,10 @@ fun ReaderScreen(
         }
     }
 
+    // ── INTERFAZ VISUAL ─────────────────────────────────────────────────────
     val currentVisibleChapterName by remember {
         derivedStateOf {
+            if (!hasRestoredInitialPosition) return@derivedStateOf ReaderDataCache.currentChapter?.name ?: "Lector"
             val firstVisibleIndex = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: 0
             if (state.pages.isNotEmpty() && firstVisibleIndex < state.pages.size) {
                 state.pages[firstVisibleIndex].chapter.name
@@ -159,6 +192,7 @@ fun ReaderScreen(
 
     val currentVisiblePageInfo by remember {
         derivedStateOf {
+            if (!hasRestoredInitialPosition) return@derivedStateOf null
             val firstVisibleIndex = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: 0
             if (state.pages.isNotEmpty() && firstVisibleIndex < state.pages.size) {
                 state.pages[firstVisibleIndex]
@@ -166,66 +200,72 @@ fun ReaderScreen(
         }
     }
 
-    // ── INTERFAZ VISUAL DEL LECTOR ──────────────────────────────────────────
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
 
-        if (state.isLoadingInitial) {
-            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Color.White)
-        } else {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { showOverlay = !showOverlay } // Muestra TU menú, no el del sistema
-            ) {
-                itemsIndexed(state.pages, key = { _, page -> page.uniqueId }) { index, readerPage ->
-
-                    if (index > 0 && state.pages[index - 1].chapter.url != readerPage.chapter.url) {
-                        ChapterTransitionDivider(
-                            prevName = cleanChapterName(state.pages[index - 1].chapter.name),
-                            nextName = cleanChapterName(readerPage.chapter.name)
-                        )
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .alpha(if (hasRestoredInitialPosition) 1f else 0f)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { showOverlay = !showOverlay }
+        ) {
+            if (state.isLoadingPrev) {
+                item {
+                    Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Color.White)
                     }
+                }
+            }
 
-                    val imageUrl = readerPage.page.imageUrl ?: readerPage.page.url
+            itemsIndexed(state.pages, key = { _, page -> page.uniqueId }) { index, readerPage ->
 
-                    SubcomposeAsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(imageUrl)
-                            .crossfade(false)
-                            .build(),
-                        contentDescription = "Página ${readerPage.displayIndex}",
-                        contentScale = ContentScale.FillWidth,
-                        modifier = Modifier.fillMaxWidth(),
-                        loading = {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(400.dp)
-                                    .background(Color.Black),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator(color = Color.DarkGray)
-                            }
-                        }
+                if (index > 0 && state.pages[index - 1].chapter.url != readerPage.chapter.url) {
+                    ChapterTransitionDivider(
+                        prevName = cleanChapterName(state.pages[index - 1].chapter.name),
+                        nextName = cleanChapterName(readerPage.chapter.name)
                     )
                 }
 
-                if (state.isLoadingNext) {
-                    item {
-                        Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = Color.White)
-                        }
+                val imageUrl = readerPage.page.imageUrl ?: readerPage.page.url
+
+                // 🔥 RENDERIZADO NATIVO: Adiós brincos feos y efecto caminadora.
+                // Usamos AsyncImage puro en lugar de Subcompose. Mantiene la estabilidad del scroll.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = 400.dp)
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(imageUrl)
+                            .crossfade(250)
+                            .build(),
+                        contentDescription = "Página ${readerPage.displayIndex}",
+                        contentScale = ContentScale.FillWidth,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            if (state.isLoadingNext) {
+                item {
+                    Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Color.White)
                     }
                 }
             }
         }
 
-        // ── PASTILLA INFERIOR (Páginas) ──
-        if (currentVisiblePageInfo != null) {
+        if (state.isLoadingInitial || (state.pages.isNotEmpty() && !hasRestoredInitialPosition)) {
+            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Color.White)
+        }
+
+        if (currentVisiblePageInfo != null && hasRestoredInitialPosition) {
             val pageInfo = currentVisiblePageInfo!!
 
             val (capActual, capTotal) = remember(pageInfo.chapter.url) {
@@ -236,7 +276,7 @@ fun ReaderScreen(
             }
 
             AnimatedVisibility(
-                visible = showOverlay, // Se oculta también cuando tocas la pantalla para leer sin estorbos
+                visible = showOverlay,
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier.align(Alignment.BottomCenter)
@@ -247,17 +287,16 @@ fun ReaderScreen(
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier
-                        .windowInsetsPadding(WindowInsets.displayCutout) // Respeta los bordes físicos de la pantalla
-                        .padding(bottom = 24.dp)
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(bottom = 16.dp)
                         .background(Color(0xFF121212).copy(alpha = 0.9f), RoundedCornerShape(16.dp))
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                 )
             }
         }
 
-        // ── MENÚ SUPERIOR (SÚPER LIMPIO Y SOBRE EL MANGA) ───────────────────
         AnimatedVisibility(
-            visible = showOverlay,
+            visible = showOverlay && hasRestoredInitialPosition,
             enter = slideInVertically() + fadeIn(),
             exit = slideOutVertically() + fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter)
@@ -266,22 +305,20 @@ fun ReaderScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color.Black.copy(alpha = 0.85f))
-                    // 🔥 LA CLAVE DE TODO: Solo esquiva físicamente la cámara (Notch)
-                    // No le importa la barra de notificaciones porque el sistema la tiene oculta
-                    .windowInsetsPadding(WindowInsets.displayCutout)
+                    .windowInsetsPadding(WindowInsets.statusBars)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(vertical = 8.dp)
+                    modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp)
                 ) {
-                    IconButton(onClick = { safeExit() }) { // Usa la salida segura anti-bugs
+                    IconButton(onClick = { safeExit() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
                     }
                     Text(
                         text = cleanChapterName(currentVisibleChapterName),
                         color = Color.White,
                         maxLines = 1,
-                        fontSize = 18.sp,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Medium
                     )
                 }

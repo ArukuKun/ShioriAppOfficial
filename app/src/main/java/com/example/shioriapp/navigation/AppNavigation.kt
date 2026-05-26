@@ -1,5 +1,6 @@
 package com.example.shioriapp.navigation
 
+import android.content.Intent
 import android.util.Log
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
@@ -44,7 +45,6 @@ object Routes {
     const val MAS = "mas"
     const val REPOSITORY = "repository"
     const val DETAILS = "manga_details/{sourceName}?mangaUrl={mangaUrl}&mangaTitle={mangaTitle}&resume={resume}"
-    const val READER = "reader/{sourceName}"
     const val SEARCH = "search"
 }
 
@@ -57,6 +57,7 @@ object ReaderDataCache {
 @Composable
 fun AppNavigation() {
     val rootNavController = rememberNavController()
+    val context = LocalContext.current
 
     NavHost(
         navController = rootNavController,
@@ -100,26 +101,15 @@ fun AppNavigation() {
                     ReaderDataCache.mangaUrl = mangaUrl
 
                     val safeSource = if (sourceName.isNotBlank()) sourceName else "FuenteDesconocida"
-                    val encSource = URLEncoder.encode(safeSource, "UTF-8")
 
-                    rootNavController.navigate("reader/$encSource")
+                    val intent = Intent(context, ReaderActivity::class.java).apply {
+                        putExtra("sourceName", safeSource)
+                    }
+                    context.startActivity(intent)
                 },
                 onCategoryClick = {
                     rootNavController.navigate(Routes.MAIN_TABS) { popUpTo(Routes.MAIN_TABS) { inclusive = false } }
                 }
-            )
-        }
-
-        composable(
-            route = Routes.READER,
-            arguments = listOf(navArgument("sourceName") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val encSource = backStackEntry.arguments?.getString("sourceName") ?: ""
-            val decodedSource = URLDecoder.decode(encSource, "UTF-8")
-
-            ReaderScreen(
-                sourceName = decodedSource,
-                onBack = { rootNavController.popBackStack() }
             )
         }
 
@@ -149,7 +139,6 @@ fun MainTabsScreen(rootNavController: NavHostController) {
     val currentRoute = navBackStackEntry?.destination?.route ?: Routes.HOME
     var showNotifications by remember { mutableStateOf(false) }
 
-    // 🔥 Extraemos el contexto aquí para poder leer los archivos locales
     val context = LocalContext.current
 
     Scaffold(
@@ -215,14 +204,12 @@ fun MainTabsScreen(rootNavController: NavHostController) {
             composable(Routes.HOME) {
                 HomeScreen(
                     onMangaClick = { manga ->
-                        // Clic normal desde biblioteca: Abre los detalles
                         val encUrl = URLEncoder.encode(manga.url, "UTF-8")
                         val encTitle = URLEncoder.encode(manga.title, "UTF-8")
                         val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
                         rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=false")
                     },
                     onResumeClick = { manga ->
-                        // 🔥 CLIC EN SEGUIR LEYENDO: Salto inmersivo y directo al Lector
                         var directJumpSuccess = false
 
                         try {
@@ -230,7 +217,6 @@ fun MainTabsScreen(rootNavController: NavHostController) {
                             val capsFile = File(context.cacheDir, "${hash}_caps.json")
 
                             if (capsFile.exists()) {
-                                // 1. Leer los capítulos guardados localmente
                                 val cArray = JSONArray(capsFile.readText())
                                 val cachedCaps = mutableListOf<ChapterInfo>()
                                 for (i in 0 until cArray.length()) {
@@ -238,36 +224,34 @@ fun MainTabsScreen(rootNavController: NavHostController) {
                                     cachedCaps.add(ChapterInfo(name = cObj.getString("name"), url = cObj.getString("url")))
                                 }
 
-                                // 2. Lógica matemática para adivinar el capítulo
                                 val progress = LibraryManager.progressMap.value[manga.url]
-                                val readChapters = progress?.readChapters ?: emptySet()
-                                val hasProgress = progress?.lastChapterUrl?.isNotBlank() == true
+                                val lastReadIndex = cachedCaps.indexOfFirst { it.url == progress?.lastChapterUrl }
 
-                                val chaptersAsc = cachedCaps.reversed()
-                                val chapterToOpen = if (hasProgress) {
-                                    val lastReadIndex = chaptersAsc.indexOfFirst { it.url == progress?.lastChapterUrl }
-                                    val lastChapterFinished = progress?.lastChapterUrl in readChapters
-
-                                    if (lastReadIndex >= 0 && lastReadIndex < chaptersAsc.lastIndex && lastChapterFinished) {
-                                        chaptersAsc[lastReadIndex + 1] // Abre el siguiente
-                                    } else {
-                                        chaptersAsc[lastReadIndex.coerceAtLeast(0)] // Reanuda el actual
-                                    }
+                                val chapterToOpen = if (lastReadIndex >= 0) {
+                                    // 🔥 OBEDIENCIA ABSOLUTA: Te deja literal en el capítulo que estabas viendo la última vez.
+                                    // Ignora si terminaste de leerlo o no.
+                                    cachedCaps[lastReadIndex]
                                 } else {
-                                    chaptersAsc.firstOrNull() // Abre el primero si no hay progreso
+                                    // Si no hay progreso previo, abrimos el Capítulo 1
+                                    val numRegex = Regex("\\d+(\\.\\d+)?")
+                                    val firstNum = numRegex.find(cachedCaps.first().name)?.value?.toDoubleOrNull() ?: 0.0
+                                    val lastNum = numRegex.find(cachedCaps.last().name)?.value?.toDoubleOrNull() ?: 0.0
+                                    val isDescending = firstNum > lastNum
+                                    if (isDescending) cachedCaps.lastOrNull() else cachedCaps.firstOrNull()
                                 }
 
                                 if (chapterToOpen != null) {
-                                    // 3. Empaquetar los datos para el ReaderScreen
                                     ReaderDataCache.currentChapter = chapterToOpen
                                     ReaderDataCache.chapters = cachedCaps
                                     ReaderDataCache.mangaUrl = manga.url
 
-                                    // 4. Hacer el salto directo, ignorando los detalles por completo
                                     val safeSource = if (manga.sourceName.isNotBlank()) manga.sourceName else "FuenteDesconocida"
-                                    val encSource = URLEncoder.encode(safeSource, "UTF-8")
 
-                                    rootNavController.navigate("reader/$encSource")
+                                    val intent = Intent(context, ReaderActivity::class.java).apply {
+                                        putExtra("sourceName", safeSource)
+                                    }
+                                    context.startActivity(intent)
+
                                     directJumpSuccess = true
                                 }
                             }
@@ -275,7 +259,6 @@ fun MainTabsScreen(rootNavController: NavHostController) {
                             Log.e("SHIORI_APP", "Falló el salto rápido: ${e.message}")
                         }
 
-                        // 5. Fallback de seguridad: Si algo falla o borraste el caché, recurrimos al método antiguo
                         if (!directJumpSuccess) {
                             val encUrl = URLEncoder.encode(manga.url, "UTF-8")
                             val encTitle = URLEncoder.encode(manga.title, "UTF-8")
