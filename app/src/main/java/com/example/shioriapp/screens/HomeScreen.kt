@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.data.repository.LibraryManager
+import java.io.File
 
 @Composable
 fun HomeScreen(
@@ -34,24 +35,48 @@ fun HomeScreen(
         LibraryManager.init(context)
     }
 
-    val biblioteca by LibraryManager.library.collectAsState()
     val progressMap by LibraryManager.progressMap.collectAsState()
 
-    // 🔥 ALGORITMO: Filtra y ordena los mangas en tiempo real
-    val continueReadingList = remember(biblioteca, progressMap) {
-        biblioteca.filter { manga ->
-            val progress = progressMap[manga.url] ?: return@filter false
+    // 🔥 CORRECCIÓN 1: Agregamos la variable de tu biblioteca que faltaba
+    val biblioteca by LibraryManager.library.collectAsState()
 
-            // ¿Se terminó de leer el último capítulo guardado?
-            val isLastChapterFinished = progress.lastChapterUrl in progress.readChapters
-            // ¿Hay capítulos nuevos o sin leer disponibles?
-            val hasUnreadChapters = progress.totalChapters > progress.readChapters.size
+    val continueReadingList = remember(progressMap) {
+        val list = mutableListOf<MangaInfo>() // Tipo explícito más limpio
 
-            // Aparecerá si dejaste un capítulo a medias O si hay capítulos sin leer
-            !isLastChapterFinished || hasUnreadChapters
-        }.sortedByDescending { manga ->
-            progressMap[manga.url]?.lastReadTime ?: 0L
+        progressMap.forEach { (url, progress) ->
+            if (progress.lastChapterUrl.isNotBlank()) {
+                val hash = url.hashCode()
+                val mangaFile = File(context.cacheDir, "${hash}_manga.json")
+
+                if (mangaFile.exists()) {
+                    try {
+                        val mObj = org.json.JSONObject(mangaFile.readText())
+                        val cachedSource = mObj.optString("sourceName")
+                        if (cachedSource.isBlank() || cachedSource == "null") {
+                            mangaFile.delete()
+                            val capsFile = File(context.cacheDir, "${hash}_caps.json")
+                            if (capsFile.exists()) capsFile.delete()
+                            throw Exception("Caché corrupto detectado y eliminado")
+                        }
+                        list.add(
+                            MangaInfo(
+                                title = mObj.optString("title"),
+                                url = url,
+                                coverUrl = mObj.optString("coverUrl"),
+                                description = mObj.optString("description"),
+                                author = mObj.optString("author"),
+                                status = mObj.optInt("status"),
+                                genres = mObj.optString("genres"),
+                                sourceName = cachedSource
+                            )
+                        )
+                    } catch (e: Exception) {
+
+                    }
+                }
+            }
         }
+        list
     }
 
     LazyVerticalGrid(

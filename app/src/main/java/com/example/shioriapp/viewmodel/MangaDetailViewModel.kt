@@ -113,7 +113,7 @@ class MangaDetailViewModel : ViewModel() {
                     put("author", mangaFinal.author)
                     put("status", mangaFinal.status)
                     put("genres", mangaFinal.genres)
-                    put("sourceName", mangaFinal.sourceName)
+                    put("sourceName", decodedSource)
                 }
                 mangaFile.writeText(mObj.toString())
 

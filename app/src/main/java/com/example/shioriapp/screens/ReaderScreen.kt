@@ -1,6 +1,7 @@
 package com.example.shioriapp.screens
 
 import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,11 +44,43 @@ fun ReaderScreen(
     val context = LocalContext.current
     var showOverlay by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
-
-    // 🔥 Bandera de control para evitar que el índice 0 inicial pise el progreso antes del scroll
     var hasRestoredInitialPosition by remember { mutableStateOf(false) }
 
-    // 1. Arrancamos el lector obteniendo los datos de la caché
+    val activity = context as? Activity
+    val window = activity?.window
+    val controller = remember(window) { window?.let { WindowCompat.getInsetsController(it, it.decorView) } }
+
+    // ── 1. INMERSIÓN TOTAL DESDE EL INICIO ──────────────────────────────────
+    DisposableEffect(Unit) {
+        // Ocultamos las barras (hora, batería y botones de navegación) inmediatamente
+        controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller?.hide(WindowInsetsCompat.Type.systemBars())
+
+        onDispose {
+            // Restauramos el sistema al salir (limpieza de seguridad)
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+            window?.decorView?.requestApplyInsets()
+
+            viewModel.clearReader()
+            ReaderDataCache.currentChapter = null
+            ReaderDataCache.chapters = emptyList()
+            ReaderDataCache.mangaUrl = ""
+        }
+    }
+
+    // ── 2. SALIDA SEGURA CON GESTOS O BOTÓN ─────────────────────────────────
+    // Atrapamos el gesto de deslizar el borde de la pantalla ANTES de que cambie de ventana
+    val safeExit = {
+        controller?.show(WindowInsetsCompat.Type.systemBars())
+        window?.decorView?.requestApplyInsets()
+        onBack()
+    }
+
+    BackHandler {
+        safeExit()
+    }
+
+    // ── LÓGICA DE DATOS Y LECTURA ───────────────────────────────────────────
     LaunchedEffect(Unit) {
         val chapter = ReaderDataCache.currentChapter
         val chapters = ReaderDataCache.chapters
@@ -82,7 +115,6 @@ fun ReaderScreen(
         }
     }
 
-
     LaunchedEffect(listState.firstVisibleItemIndex, hasRestoredInitialPosition) {
         if (hasRestoredInitialPosition && state.pages.isNotEmpty() && listState.firstVisibleItemIndex < state.pages.size) {
             val currentPage = state.pages[listState.firstVisibleItemIndex]
@@ -97,35 +129,6 @@ fun ReaderScreen(
                 totalPages = currentPage.totalPages,
                 isFinished = isFinished
             )
-        }
-    }
-
-    DisposableEffect(Unit) {
-        val activity = context as? Activity
-        val window = activity?.window
-        val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-
-        onDispose {
-            controller?.show(WindowInsetsCompat.Type.systemBars())
-            viewModel.clearReader()
-            ReaderDataCache.currentChapter = null
-            ReaderDataCache.chapters = emptyList()
-            ReaderDataCache.mangaUrl = ""
-        }
-    }
-
-    LaunchedEffect(showOverlay) {
-        val activity = context as? Activity
-        val window = activity?.window
-        val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-
-        controller?.let {
-            if (showOverlay) {
-                it.show(WindowInsetsCompat.Type.systemBars())
-            } else {
-                it.hide(WindowInsetsCompat.Type.systemBars())
-                it.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
         }
     }
 
@@ -163,6 +166,7 @@ fun ReaderScreen(
         }
     }
 
+    // ── INTERFAZ VISUAL DEL LECTOR ──────────────────────────────────────────
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
 
         if (state.isLoadingInitial) {
@@ -175,7 +179,7 @@ fun ReaderScreen(
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
-                    ) { showOverlay = !showOverlay }
+                    ) { showOverlay = !showOverlay } // Muestra TU menú, no el del sistema
             ) {
                 itemsIndexed(state.pages, key = { _, page -> page.uniqueId }) { index, readerPage ->
 
@@ -220,6 +224,7 @@ fun ReaderScreen(
             }
         }
 
+        // ── PASTILLA INFERIOR (Páginas) ──
         if (currentVisiblePageInfo != null) {
             val pageInfo = currentVisiblePageInfo!!
 
@@ -230,19 +235,27 @@ fun ReaderScreen(
                 Pair(current, total)
             }
 
-            Text(
-                text = "Cap. $capActual/$capTotal  •  Pág. ${pageInfo.displayIndex}/${pageInfo.totalPages}",
-                color = Color.White.copy(alpha = 0.7f),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 32.dp)
-                    .background(Color(0xFF121212).copy(alpha = 0.8f), RoundedCornerShape(16.dp))
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
-            )
+            AnimatedVisibility(
+                visible = showOverlay, // Se oculta también cuando tocas la pantalla para leer sin estorbos
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
+                Text(
+                    text = "Cap. $capActual/$capTotal  •  Pág. ${pageInfo.displayIndex}/${pageInfo.totalPages}",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .windowInsetsPadding(WindowInsets.displayCutout) // Respeta los bordes físicos de la pantalla
+                        .padding(bottom = 24.dp)
+                        .background(Color(0xFF121212).copy(alpha = 0.9f), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                )
+            }
         }
 
+        // ── MENÚ SUPERIOR (SÚPER LIMPIO Y SOBRE EL MANGA) ───────────────────
         AnimatedVisibility(
             visible = showOverlay,
             enter = slideInVertically() + fadeIn(),
@@ -253,13 +266,15 @@ fun ReaderScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color.Black.copy(alpha = 0.85f))
-                    .statusBarsPadding()
+                    // 🔥 LA CLAVE DE TODO: Solo esquiva físicamente la cámara (Notch)
+                    // No le importa la barra de notificaciones porque el sistema la tiene oculta
+                    .windowInsetsPadding(WindowInsets.displayCutout)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(vertical = 8.dp)
                 ) {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { safeExit() }) { // Usa la salida segura anti-bugs
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
                     }
                     Text(

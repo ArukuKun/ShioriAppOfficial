@@ -1,5 +1,6 @@
 package com.example.shioriapp.navigation
 
+import android.util.Log
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -13,12 +14,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -27,8 +28,11 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.shioriapp.R
+import com.example.shioriapp.data.repository.LibraryManager
 import com.example.shioriapp.domain.model.ChapterInfo
 import com.example.shioriapp.screens.*
+import org.json.JSONArray
+import java.io.File
 import java.net.URLDecoder
 import java.net.URLEncoder
 
@@ -39,7 +43,6 @@ object Routes {
     const val MENSAJERIA = "mensajeria"
     const val MAS = "mas"
     const val REPOSITORY = "repository"
-    // 🔥 AÑADIMOS la variable resume a la ruta
     const val DETAILS = "manga_details/{sourceName}?mangaUrl={mangaUrl}&mangaTitle={mangaTitle}&resume={resume}"
     const val READER = "reader/{sourceName}"
     const val SEARCH = "search"
@@ -82,8 +85,6 @@ fun AppNavigation() {
             val encodedTitle = backStackEntry.arguments?.getString("mangaTitle") ?: ""
             val resume = backStackEntry.arguments?.getBoolean("resume") ?: false
 
-            backStackEntry.arguments?.putBoolean("resume", false)
-
             val mangaUrl = URLDecoder.decode(encodedUrl, "UTF-8")
             val mangaTitle = URLDecoder.decode(encodedTitle, "UTF-8")
 
@@ -103,7 +104,7 @@ fun AppNavigation() {
 
                     rootNavController.navigate("reader/$encSource")
                 },
-                onCategoryClick = { tag ->
+                onCategoryClick = {
                     rootNavController.navigate(Routes.MAIN_TABS) { popUpTo(Routes.MAIN_TABS) { inclusive = false } }
                 }
             )
@@ -147,6 +148,9 @@ fun MainTabsScreen(rootNavController: NavHostController) {
     val navBackStackEntry by tabsNavController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Routes.HOME
     var showNotifications by remember { mutableStateOf(false) }
+
+    // 🔥 Extraemos el contexto aquí para poder leer los archivos locales
+    val context = LocalContext.current
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -211,16 +215,73 @@ fun MainTabsScreen(rootNavController: NavHostController) {
             composable(Routes.HOME) {
                 HomeScreen(
                     onMangaClick = { manga ->
+                        // Clic normal desde biblioteca: Abre los detalles
                         val encUrl = URLEncoder.encode(manga.url, "UTF-8")
                         val encTitle = URLEncoder.encode(manga.title, "UTF-8")
                         val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
                         rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=false")
                     },
                     onResumeClick = { manga ->
-                        val encUrl = URLEncoder.encode(manga.url, "UTF-8")
-                        val encTitle = URLEncoder.encode(manga.title, "UTF-8")
-                        val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
-                        rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=true") // 🔥 ESTO HACE LA MAGIA
+                        // 🔥 CLIC EN SEGUIR LEYENDO: Salto inmersivo y directo al Lector
+                        var directJumpSuccess = false
+
+                        try {
+                            val hash = manga.url.hashCode()
+                            val capsFile = File(context.cacheDir, "${hash}_caps.json")
+
+                            if (capsFile.exists()) {
+                                // 1. Leer los capítulos guardados localmente
+                                val cArray = JSONArray(capsFile.readText())
+                                val cachedCaps = mutableListOf<ChapterInfo>()
+                                for (i in 0 until cArray.length()) {
+                                    val cObj = cArray.getJSONObject(i)
+                                    cachedCaps.add(ChapterInfo(name = cObj.getString("name"), url = cObj.getString("url")))
+                                }
+
+                                // 2. Lógica matemática para adivinar el capítulo
+                                val progress = LibraryManager.progressMap.value[manga.url]
+                                val readChapters = progress?.readChapters ?: emptySet()
+                                val hasProgress = progress?.lastChapterUrl?.isNotBlank() == true
+
+                                val chaptersAsc = cachedCaps.reversed()
+                                val chapterToOpen = if (hasProgress) {
+                                    val lastReadIndex = chaptersAsc.indexOfFirst { it.url == progress?.lastChapterUrl }
+                                    val lastChapterFinished = progress?.lastChapterUrl in readChapters
+
+                                    if (lastReadIndex >= 0 && lastReadIndex < chaptersAsc.lastIndex && lastChapterFinished) {
+                                        chaptersAsc[lastReadIndex + 1] // Abre el siguiente
+                                    } else {
+                                        chaptersAsc[lastReadIndex.coerceAtLeast(0)] // Reanuda el actual
+                                    }
+                                } else {
+                                    chaptersAsc.firstOrNull() // Abre el primero si no hay progreso
+                                }
+
+                                if (chapterToOpen != null) {
+                                    // 3. Empaquetar los datos para el ReaderScreen
+                                    ReaderDataCache.currentChapter = chapterToOpen
+                                    ReaderDataCache.chapters = cachedCaps
+                                    ReaderDataCache.mangaUrl = manga.url
+
+                                    // 4. Hacer el salto directo, ignorando los detalles por completo
+                                    val safeSource = if (manga.sourceName.isNotBlank()) manga.sourceName else "FuenteDesconocida"
+                                    val encSource = URLEncoder.encode(safeSource, "UTF-8")
+
+                                    rootNavController.navigate("reader/$encSource")
+                                    directJumpSuccess = true
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("SHIORI_APP", "Falló el salto rápido: ${e.message}")
+                        }
+
+                        // 5. Fallback de seguridad: Si algo falla o borraste el caché, recurrimos al método antiguo
+                        if (!directJumpSuccess) {
+                            val encUrl = URLEncoder.encode(manga.url, "UTF-8")
+                            val encTitle = URLEncoder.encode(manga.title, "UTF-8")
+                            val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
+                            rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=true")
+                        }
                     }
                 )
             }

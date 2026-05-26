@@ -188,7 +188,9 @@ fun MangaDetailsScreen(
                     Spacer(modifier = Modifier.statusBarsPadding().height(64.dp))
 
                     Row(
-                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                        modifier = Modifier
+                            .padding(16.dp).
+                            fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         AsyncImage(
@@ -226,7 +228,8 @@ fun MangaDetailsScreen(
                                 border = BorderStroke(1.dp, statusColor.copy(alpha = 0.5f))
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.
+                                    padding(horizontal = 8.dp, vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Canvas(modifier = Modifier.size(8.dp)) {
@@ -440,7 +443,6 @@ fun MangaDetailsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black)
-                    // Absorbe los clics para que el usuario no pueda tocar botones por debajo
                     .clickable(enabled = false) {},
                 contentAlignment = Alignment.Center
             ) {
