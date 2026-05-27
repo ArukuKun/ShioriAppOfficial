@@ -1,5 +1,7 @@
 package com.example.shioriapp.navigation
 
+import android.content.Intent
+import android.util.Log
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -13,12 +15,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -27,8 +29,11 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.shioriapp.R
+import com.example.shioriapp.data.repository.LibraryManager
 import com.example.shioriapp.domain.model.ChapterInfo
 import com.example.shioriapp.screens.*
+import org.json.JSONArray
+import java.io.File
 import java.net.URLDecoder
 import java.net.URLEncoder
 
@@ -39,9 +44,8 @@ object Routes {
     const val MENSAJERIA = "mensajeria"
     const val MAS = "mas"
     const val REPOSITORY = "repository"
-    const val DETAILS = "manga_details/{sourceName}?mangaUrl={mangaUrl}&mangaTitle={mangaTitle}"
-    const val READER = "reader/{sourceName}"
-    const val SEARCH = "search" // 🔥 Nueva Ruta
+    const val DETAILS = "manga_details/{sourceName}?mangaUrl={mangaUrl}&mangaTitle={mangaTitle}&resume={resume}"
+    const val SEARCH = "search"
 }
 
 object ReaderDataCache {
@@ -53,6 +57,7 @@ object ReaderDataCache {
 @Composable
 fun AppNavigation() {
     val rootNavController = rememberNavController()
+    val context = LocalContext.current
 
     NavHost(
         navController = rootNavController,
@@ -72,12 +77,14 @@ fun AppNavigation() {
             arguments = listOf(
                 navArgument("sourceName") { type = NavType.StringType },
                 navArgument("mangaUrl") { type = NavType.StringType; nullable = true; defaultValue = "" },
-                navArgument("mangaTitle") { type = NavType.StringType; nullable = true; defaultValue = "" }
+                navArgument("mangaTitle") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("resume") { type = NavType.BoolType; defaultValue = false }
             )
         ) { backStackEntry ->
             val sourceName = URLDecoder.decode(backStackEntry.arguments?.getString("sourceName") ?: "", "UTF-8")
             val encodedUrl = backStackEntry.arguments?.getString("mangaUrl") ?: ""
             val encodedTitle = backStackEntry.arguments?.getString("mangaTitle") ?: ""
+            val resume = backStackEntry.arguments?.getBoolean("resume") ?: false
 
             val mangaUrl = URLDecoder.decode(encodedUrl, "UTF-8")
             val mangaTitle = URLDecoder.decode(encodedTitle, "UTF-8")
@@ -86,6 +93,7 @@ fun AppNavigation() {
                 mangaUrl = mangaUrl,
                 sourceName = sourceName,
                 mangaTitle = mangaTitle,
+                autoResume = resume,
                 onBack = { rootNavController.popBackStack() },
                 onChapterClick = { chapter, chapters ->
                     ReaderDataCache.currentChapter = chapter
@@ -93,26 +101,15 @@ fun AppNavigation() {
                     ReaderDataCache.mangaUrl = mangaUrl
 
                     val safeSource = if (sourceName.isNotBlank()) sourceName else "FuenteDesconocida"
-                    val encSource = URLEncoder.encode(safeSource, "UTF-8")
 
-                    rootNavController.navigate("reader/$encSource")
+                    val intent = Intent(context, ReaderActivity::class.java).apply {
+                        putExtra("sourceName", safeSource)
+                    }
+                    context.startActivity(intent)
                 },
-                onCategoryClick = { tag ->
+                onCategoryClick = {
                     rootNavController.navigate(Routes.MAIN_TABS) { popUpTo(Routes.MAIN_TABS) { inclusive = false } }
                 }
-            )
-        }
-
-        composable(
-            route = Routes.READER,
-            arguments = listOf(navArgument("sourceName") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val encSource = backStackEntry.arguments?.getString("sourceName") ?: ""
-            val decodedSource = URLDecoder.decode(encSource, "UTF-8")
-
-            ReaderScreen(
-                sourceName = decodedSource,
-                onBack = { rootNavController.popBackStack() }
             )
         }
 
@@ -120,7 +117,6 @@ fun AppNavigation() {
             ExtensionsScreen(onBack = { rootNavController.popBackStack() })
         }
 
-        // 🔥 PANTALLA DE BUSQUEDA GLOBAL
         composable(Routes.SEARCH) {
             SearchScreen(
                 onBack = { rootNavController.popBackStack() },
@@ -128,7 +124,7 @@ fun AppNavigation() {
                     val encUrl = URLEncoder.encode(manga.url, "UTF-8")
                     val encTitle = URLEncoder.encode(manga.title, "UTF-8")
                     val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
-                    rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle")
+                    rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=false")
                 }
             )
         }
@@ -142,6 +138,8 @@ fun MainTabsScreen(rootNavController: NavHostController) {
     val navBackStackEntry by tabsNavController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Routes.HOME
     var showNotifications by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -162,8 +160,15 @@ fun MainTabsScreen(rootNavController: NavHostController) {
                     IconButton(onClick = { rootNavController.navigate(Routes.SEARCH) }) {
                         Icon(Icons.Default.Search, "Buscar")
                     }
-                    IconButton(onClick = { showNotifications = !showNotifications }) {
-                        Icon(Icons.Default.Notifications, "Notificaciones")
+                    // 🔥 CAJA AÑADIDA AQUÍ PARA ANCLAR EL MENÚ
+                    Box {
+                        IconButton(onClick = { showNotifications = true }) {
+                            Icon(Icons.Default.Notifications, "Notificaciones")
+                        }
+                        NotificationDropdown(
+                            expanded = showNotifications,
+                            onDismiss = { showNotifications = false }
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
@@ -171,11 +176,12 @@ fun MainTabsScreen(rootNavController: NavHostController) {
         },
         bottomBar = {
             NavigationBar(containerColor = Color.Transparent, tonalElevation = 0.dp) {
+                // 🔥 Aquí está tu modificación aplicada
                 val items = listOf(
                     Triple(Routes.HOME, Icons.Default.Home, "Biblioteca"),
                     Triple(Routes.EXPLORE, Icons.Default.Explore, "Explorar"),
                     Triple(Routes.MENSAJERIA, Icons.Default.ChatBubbleOutline, "Mensajes"),
-                    Triple(Routes.MAS, Icons.Default.MoreHoriz, "Más")
+                    Triple(Routes.MAS, Icons.Default.Settings, "Ajustes")
                 )
                 items.forEach { (route, icon, label) ->
                     NavigationBarItem(
@@ -204,19 +210,78 @@ fun MainTabsScreen(rootNavController: NavHostController) {
             exitTransition = { fadeOut(tween(0)) }
         ) {
             composable(Routes.HOME) {
-                HomeScreen(onMangaClick = { manga ->
-                    val encUrl = URLEncoder.encode(manga.url, "UTF-8")
-                    val encTitle = URLEncoder.encode(manga.title, "UTF-8")
-                    val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
-                    rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle")
-                })
+                HomeScreen(
+                    onMangaClick = { manga ->
+                        val encUrl = URLEncoder.encode(manga.url, "UTF-8")
+                        val encTitle = URLEncoder.encode(manga.title, "UTF-8")
+                        val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
+                        rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=false")
+                    },
+                    onResumeClick = { manga ->
+                        var directJumpSuccess = false
+
+                        try {
+                            val hash = manga.url.hashCode()
+                            val capsFile = File(context.cacheDir, "${hash}_caps.json")
+
+                            if (capsFile.exists()) {
+                                val cArray = JSONArray(capsFile.readText())
+                                val cachedCaps = mutableListOf<ChapterInfo>()
+                                for (i in 0 until cArray.length()) {
+                                    val cObj = cArray.getJSONObject(i)
+                                    cachedCaps.add(ChapterInfo(name = cObj.getString("name"), url = cObj.getString("url")))
+                                }
+
+                                val progress = LibraryManager.progressMap.value[manga.url]
+                                val lastReadIndex = cachedCaps.indexOfFirst { it.url == progress?.lastChapterUrl }
+
+                                val chapterToOpen = if (lastReadIndex >= 0) {
+                                    // 🔥 OBEDIENCIA ABSOLUTA: Te deja literal en el capítulo que estabas viendo la última vez.
+                                    // Ignora si terminaste de leerlo o no.
+                                    cachedCaps[lastReadIndex]
+                                } else {
+                                    // Si no hay progreso previo, abrimos el Capítulo 1
+                                    val numRegex = Regex("\\d+(\\.\\d+)?")
+                                    val firstNum = numRegex.find(cachedCaps.first().name)?.value?.toDoubleOrNull() ?: 0.0
+                                    val lastNum = numRegex.find(cachedCaps.last().name)?.value?.toDoubleOrNull() ?: 0.0
+                                    val isDescending = firstNum > lastNum
+                                    if (isDescending) cachedCaps.lastOrNull() else cachedCaps.firstOrNull()
+                                }
+
+                                if (chapterToOpen != null) {
+                                    ReaderDataCache.currentChapter = chapterToOpen
+                                    ReaderDataCache.chapters = cachedCaps
+                                    ReaderDataCache.mangaUrl = manga.url
+
+                                    val safeSource = if (manga.sourceName.isNotBlank()) manga.sourceName else "FuenteDesconocida"
+
+                                    val intent = Intent(context, ReaderActivity::class.java).apply {
+                                        putExtra("sourceName", safeSource)
+                                    }
+                                    context.startActivity(intent)
+
+                                    directJumpSuccess = true
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("SHIORI_APP", "Falló el salto rápido: ${e.message}")
+                        }
+
+                        if (!directJumpSuccess) {
+                            val encUrl = URLEncoder.encode(manga.url, "UTF-8")
+                            val encTitle = URLEncoder.encode(manga.title, "UTF-8")
+                            val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
+                            rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=true")
+                        }
+                    }
+                )
             }
             composable(Routes.EXPLORE) {
                 ExploreScreen(onMangaClick = { url, source, title ->
                     val encUrl    = URLEncoder.encode(url,    "UTF-8")
                     val encTitle  = URLEncoder.encode(title,  "UTF-8")
                     val encSource = URLEncoder.encode(source, "UTF-8")
-                    rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle")
+                    rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=false")
                 })
             }
             composable(Routes.MENSAJERIA) { MensajeriaScreen() }
@@ -225,9 +290,7 @@ fun MainTabsScreen(rootNavController: NavHostController) {
             }
         }
 
-        if (showNotifications) {
-            NotificationDropdown(expanded = showNotifications, onDismiss = { showNotifications = false })
-        }
+        // 🔥 ELIMINADO EL IF (showNotifications) SUELTO QUE ESTABA AQUÍ ABAJO
     }
 }
 

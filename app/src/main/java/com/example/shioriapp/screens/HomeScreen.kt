@@ -4,7 +4,9 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,10 +22,12 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.data.repository.LibraryManager
+import java.io.File
 
 @Composable
 fun HomeScreen(
-    onMangaClick: (MangaInfo) -> Unit
+    onMangaClick: (MangaInfo) -> Unit,
+    onResumeClick: (MangaInfo) -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -31,20 +35,91 @@ fun HomeScreen(
         LibraryManager.init(context)
     }
 
+    val progressMap by LibraryManager.progressMap.collectAsState()
+
+    // 🔥 CORRECCIÓN 1: Agregamos la variable de tu biblioteca que faltaba
     val biblioteca by LibraryManager.library.collectAsState()
+
+    val continueReadingList = remember(progressMap) {
+        val list = mutableListOf<MangaInfo>() // Tipo explícito más limpio
+
+        progressMap.forEach { (url, progress) ->
+            if (progress.lastChapterUrl.isNotBlank()) {
+                val hash = url.hashCode()
+                val mangaFile = File(context.cacheDir, "${hash}_manga.json")
+
+                if (mangaFile.exists()) {
+                    try {
+                        val mObj = org.json.JSONObject(mangaFile.readText())
+                        val cachedSource = mObj.optString("sourceName")
+                        if (cachedSource.isBlank() || cachedSource == "null") {
+                            mangaFile.delete()
+                            val capsFile = File(context.cacheDir, "${hash}_caps.json")
+                            if (capsFile.exists()) capsFile.delete()
+                            throw Exception("Caché corrupto detectado y eliminado")
+                        }
+                        list.add(
+                            MangaInfo(
+                                title = mObj.optString("title"),
+                                url = url,
+                                coverUrl = mObj.optString("coverUrl"),
+                                description = mObj.optString("description"),
+                                author = mObj.optString("author"),
+                                status = mObj.optInt("status"),
+                                genres = mObj.optString("genres"),
+                                sourceName = cachedSource
+                            )
+                        )
+                    } catch (e: Exception) {
+
+                    }
+                }
+            }
+        }
+        list
+    }
 
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 110.dp),
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding(),
-        contentPadding = PaddingValues(16.dp),
+            .background(MaterialTheme.colorScheme.background),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 0.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        if (continueReadingList.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    text = "Seguir Leyendo",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(continueReadingList) { manga ->
+                        LibraryMangaCard(
+                            manga = manga,
+                            onClick = { onResumeClick(manga) },
+                            modifier = Modifier.width(110.dp)
+                        )
+                    }
+                }
+            }
+            // Divisor estético
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color.Gray.copy(alpha = 0.2f))
+            }
+        }
+
+        // SECCIÓN: Tu Biblioteca General
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Text("Tu Biblioteca", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp))
+            Text("Tu Biblioteca", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
         }
 
         if (biblioteca.isEmpty()) {
@@ -56,7 +131,6 @@ fun HomeScreen(
                 LibraryMangaCard(
                     manga = manga,
                     onClick = {
-                        // 🔥 SISTEMA DE AUTOCURACIÓN: Elimina mangas de pruebas anteriores que se guardaron mal
                         if (manga.sourceName.isBlank()) {
                             LibraryManager.toggleManga(context, manga)
                             Toast.makeText(context, "Manga corrupto eliminado. Búscalo de nuevo para leerlo.", Toast.LENGTH_LONG).show()
