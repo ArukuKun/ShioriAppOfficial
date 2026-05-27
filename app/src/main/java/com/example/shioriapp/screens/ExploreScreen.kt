@@ -34,10 +34,11 @@ fun ExploreScreen(
     val state by viewModel.state.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Spacer(modifier = Modifier.height(16.dp))
+        // 🔥 Spacer de 16.dp eliminado por completo para pegar la fila arriba.
+        // Además, controlamos el padding exacto de la fila para que no choque con el TopAppBar.
 
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {

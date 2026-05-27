@@ -160,8 +160,15 @@ fun MainTabsScreen(rootNavController: NavHostController) {
                     IconButton(onClick = { rootNavController.navigate(Routes.SEARCH) }) {
                         Icon(Icons.Default.Search, "Buscar")
                     }
-                    IconButton(onClick = { showNotifications = !showNotifications }) {
-                        Icon(Icons.Default.Notifications, "Notificaciones")
+                    // 🔥 CAJA AÑADIDA AQUÍ PARA ANCLAR EL MENÚ
+                    Box {
+                        IconButton(onClick = { showNotifications = true }) {
+                            Icon(Icons.Default.Notifications, "Notificaciones")
+                        }
+                        NotificationDropdown(
+                            expanded = showNotifications,
+                            onDismiss = { showNotifications = false }
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
@@ -169,11 +176,12 @@ fun MainTabsScreen(rootNavController: NavHostController) {
         },
         bottomBar = {
             NavigationBar(containerColor = Color.Transparent, tonalElevation = 0.dp) {
+                // 🔥 Aquí está tu modificación aplicada
                 val items = listOf(
                     Triple(Routes.HOME, Icons.Default.Home, "Biblioteca"),
                     Triple(Routes.EXPLORE, Icons.Default.Explore, "Explorar"),
                     Triple(Routes.MENSAJERIA, Icons.Default.ChatBubbleOutline, "Mensajes"),
-                    Triple(Routes.MAS, Icons.Default.MoreHoriz, "Más")
+                    Triple(Routes.MAS, Icons.Default.Settings, "Ajustes")
                 )
                 items.forEach { (route, icon, label) ->
                     NavigationBarItem(
@@ -282,9 +290,7 @@ fun MainTabsScreen(rootNavController: NavHostController) {
             }
         }
 
-        if (showNotifications) {
-            NotificationDropdown(expanded = showNotifications, onDismiss = { showNotifications = false })
-        }
+        // 🔥 ELIMINADO EL IF (showNotifications) SUELTO QUE ESTABA AQUÍ ABAJO
     }
 }
 
