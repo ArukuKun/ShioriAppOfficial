@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -27,7 +28,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import coil.imageLoader
 import coil.request.ImageRequest
 import com.example.shioriapp.navigation.ReaderDataCache
 import com.example.shioriapp.viewmodel.ReaderViewModel
@@ -47,7 +49,6 @@ fun ReaderScreen(
     val listState = rememberLazyListState()
 
     var hasRestoredInitialPosition by remember { mutableStateOf(false) }
-    // 🔥 CANDADO DE PROGRESO
     var isReadyToSaveProgress by remember { mutableStateOf(false) }
 
     val activity = context as? Activity
@@ -57,6 +58,10 @@ fun ReaderScreen(
     var anchorKey by remember { mutableStateOf<String?>(null) }
     var anchorOffset by remember { mutableIntStateOf(0) }
     var isPrepending by remember { mutableStateOf(false) }
+
+    // Obtenemos el ImageLoader global para nuestro motor de precarga
+    val imageLoader = context.imageLoader
+    val currentFirstVisible by remember { derivedStateOf { listState.firstVisibleItemIndex } }
 
     DisposableEffect(Unit) {
         controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -96,7 +101,27 @@ fun ReaderScreen(
         }
     }
 
-    // ── LÓGICA DE POSICIONAMIENTO Y ANCLAJE ───────────────────────────────
+    // 🚀 EL MOTOR DE PRE-CARGA (PREFETCHER) ESTILO MIHON 🚀
+    LaunchedEffect(currentFirstVisible, state.pages) {
+        if (state.pages.isEmpty() || !hasRestoredInitialPosition) return@LaunchedEffect
+
+        // Precarga las imágenes silenciosamente en caché para que saborear su tamaño nativo real
+        val start = (currentFirstVisible - 5).coerceAtLeast(0)
+        val end = (currentFirstVisible + 5).coerceAtMost(state.pages.lastIndex)
+
+        for (i in start..end) {
+            val pageUrl = state.pages[i].page.imageUrl ?: state.pages[i].page.url
+            if (pageUrl.isNotBlank()) {
+                val request = ImageRequest.Builder(context)
+                    .data(pageUrl)
+                    .memoryCacheKey(pageUrl)
+                    .diskCacheKey(pageUrl)
+                    .build()
+                imageLoader.enqueue(request)
+            }
+        }
+    }
+
     LaunchedEffect(state.pages) {
         if (isPrepending && anchorKey != null) {
             val newIndex = state.pages.indexOfFirst { it.uniqueId == anchorKey }
@@ -120,17 +145,14 @@ fun ReaderScreen(
                 }
             }
             hasRestoredInitialPosition = true
-
-            // 🔥 CANDADO DE TITANIO: 2 segundos de gracia para evitar reseteos de progreso
             kotlinx.coroutines.delay(2000)
             isReadyToSaveProgress = true
         }
     }
 
-    // ── GUARDADO DE PROGRESO SEGURO ─────────────────────────────────────────
-    LaunchedEffect(listState.firstVisibleItemIndex, isReadyToSaveProgress) {
-        if (isReadyToSaveProgress && state.pages.isNotEmpty() && listState.firstVisibleItemIndex < state.pages.size) {
-            val currentPage = state.pages[listState.firstVisibleItemIndex]
+    LaunchedEffect(currentFirstVisible, isReadyToSaveProgress) {
+        if (isReadyToSaveProgress && state.pages.isNotEmpty() && currentFirstVisible < state.pages.size) {
+            val currentPage = state.pages[currentFirstVisible]
             val mangaUrl = ReaderDataCache.mangaUrl
             val isFinished = currentPage.displayIndex >= currentPage.totalPages
 
@@ -145,11 +167,9 @@ fun ReaderScreen(
         }
     }
 
-    // ── DETECCIÓN DE SCROLL ─────────────────────────────────────────────────
     val shouldLoadPrevious by remember {
         derivedStateOf {
-            val firstVisibleItem = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: 0
-            hasRestoredInitialPosition && state.pages.isNotEmpty() && firstVisibleItem <= 1
+            hasRestoredInitialPosition && state.pages.isNotEmpty() && currentFirstVisible <= 3
         }
     }
 
@@ -177,7 +197,6 @@ fun ReaderScreen(
         }
     }
 
-    // ── INTERFAZ VISUAL ─────────────────────────────────────────────────────
     val currentVisibleChapterName by remember {
         derivedStateOf {
             if (!hasRestoredInitialPosition) return@derivedStateOf ReaderDataCache.currentChapter?.name ?: "Lector"
@@ -231,23 +250,42 @@ fun ReaderScreen(
 
                 val imageUrl = readerPage.page.imageUrl ?: readerPage.page.url
 
-                // 🔥 RENDERIZADO NATIVO: Adiós brincos feos y efecto caminadora.
-                // Usamos AsyncImage puro en lugar de Subcompose. Mantiene la estabilidad del scroll.
+                // 🔥 LA UNIÓN DEFINITIVA: Estética + Cargador + Mitigación de Saltos
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .defaultMinSize(minHeight = 400.dp)
-                        .background(Color.Black),
-                    contentAlignment = Alignment.Center
+                        // 🔥 Solución Estética: wrapContentHeight(). La caja no medirá 400px,
+                        // medirá lo que mide la imagen real nativa (arregla image_2.png).
+                        .wrapContentHeight()
+                        .background(Color.Black)
+                        // 🔥 Mitigación: Cuando la imagen real cargue y crezca de 0 a nativa,
+                        // lo hará mediante una animación suave en lugar de un salto brusco.
+                        .animateContentSize()
                 ) {
-                    AsyncImage(
+                    SubcomposeAsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(imageUrl)
-                            .crossfade(250)
+                            .crossfade(true)
                             .build(),
                         contentDescription = "Página ${readerPage.displayIndex}",
+                        // 🔥 Estética: Mantiene ratio nativo (horizontal se ve landscape, vertical portrait)
                         contentScale = ContentScale.FillWidth,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+
+                        // 🔥 SÍMBOLO DE CARGANDO EN TIEMPO REAL (Vuelve tu hoja negra)
+                        loading = {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    // La caja de carga mide la altura mínima de tensión
+                                    .height(400.dp)
+                                    .background(Color.Black),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                // Tu spinner centrado
+                                CircularProgressIndicator(color = Color.DarkGray)
+                            }
+                        }
                     )
                 }
             }

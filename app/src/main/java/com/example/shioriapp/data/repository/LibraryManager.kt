@@ -1,14 +1,14 @@
 package com.example.shioriapp.data.repository
 
 import android.content.Context
+import android.util.Log
 import com.example.shioriapp.domain.model.MangaInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.Serializable
-import android.util.Log
 
 @Serializable
 data class ReadingProgress(
@@ -161,6 +161,30 @@ object LibraryManager {
         _library.value = current
         context.getSharedPreferences("shiori_library", Context.MODE_PRIVATE)
             .edit().putString("library_data", Json.encodeToString(current)).apply()
+    }
+
+    fun migrateManga(context: Context, oldManga: MangaInfo, newManga: MangaInfo) {
+        val currentLib = _library.value.toMutableList()
+        val currentProg = _progressMap.value.toMutableMap()
+
+        // 1. Elimina el manga viejo de la biblioteca y añade el nuevo al principio
+        currentLib.removeAll { it.url == oldManga.url && it.sourceName == oldManga.sourceName }
+        if (currentLib.none { it.url == newManga.url && it.sourceName == newManga.sourceName }) {
+            currentLib.add(0, newManga)
+        }
+
+        val oldProgress = currentProg[oldManga.url]
+        if (oldProgress != null) {
+            currentProg[newManga.url] = oldProgress
+
+        }
+
+        _library.value = currentLib
+        context.getSharedPreferences("shiori_library", Context.MODE_PRIVATE)
+            .edit().putString("library_data", Json.encodeToString(currentLib)).apply()
+
+        _progressMap.value = currentProg
+        persist(context, currentProg)
     }
 
     private fun persist(context: Context, map: Map<String, ReadingProgress>) {

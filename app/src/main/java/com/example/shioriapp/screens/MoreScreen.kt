@@ -22,9 +22,10 @@ import androidx.compose.ui.unit.sp
 import com.example.shioriapp.R
 
 @Composable
-fun SettingsScreen(
-    // CORRECCIÓN: Definimos el parámetro para que la navegación funcione
-    onNavigateToRepository: () -> Unit
+fun MoreScreen(
+    onNavigateToExtension: () -> Unit,
+    onNavigateToMigration: () -> Unit,
+    onNavigateToStorage: () -> Unit
 ) {
     val isDarkMode = isSystemInDarkTheme()
 
@@ -32,6 +33,7 @@ fun SettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding() // 🔥 EL ARREGLO ESTÁ AQUÍ: Evita que el logo choque con la hora/batería
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
     ) {
@@ -63,30 +65,37 @@ fun SettingsScreen(
             subtitle = "Sincroniza tus capítulos leídos"
         )
 
+        SettingsItem(
+            icon = Icons.Default.ImportExport,
+            title = "Migrar",
+            subtitle = "Migra mangas de una extensión a otra",
+            onClick = { onNavigateToMigration() }
+        )
+
         Spacer(modifier = Modifier.height(16.dp))
 
         SettingsSectionTitle(title = "Fuentes")
 
-        // --- REPOSITORIOS (Navegación corregida) ---
         SettingsItem(
             icon = Icons.Default.CloudDownload,
             title = "Extensiones",
             subtitle = "Gestiona las extensiones de mangas",
-            onClick = { onNavigateToRepository() }
+            onClick = { onNavigateToExtension() }
         )
 
         SettingsItem(
             icon = Icons.Default.CloudDownload,
             title = "Repositorios",
             subtitle = "Gestiona los repositorios añadidos",
-            onClick = { onNavigateToRepository() }
+            onClick = { }
         )
 
 
         SettingsItem(
             icon = Icons.Default.Storage,
             title = "Almacenamiento",
-            subtitle = "Limpiar caché y mangas descargados"
+            subtitle = "Limpiar caché y mangas descargados",
+            onClick = { onNavigateToStorage() }
         )
 
         Spacer(modifier = Modifier.height(16.dp))
