@@ -40,8 +40,6 @@ fun ExploreScreen(
 
     val context = LocalContext.current
 
-    // 🔥 LA SOLUCIÓN: Generamos un número aleatorio (semilla) UNA SOLA VEZ por sesión.
-    // rememberSaveable asegura que este número no se borre al entrar y salir de un manga.
     val sessionSeed = rememberSaveable { Random.nextLong() }
 
     // 🔥 Usamos la misma semilla para mezclar. Así siempre da el mismo resultado
