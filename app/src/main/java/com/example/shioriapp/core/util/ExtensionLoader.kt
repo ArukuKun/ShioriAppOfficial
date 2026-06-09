@@ -318,6 +318,66 @@ class SourceAdapter(
         return mangaList
     }
 
+    override suspend fun fetchPopularManga(page: Int): List<MangaInfo> {        val TAG = "SHIORI_POPULAR"
+        val mangaList = mutableListOf<MangaInfo>()
+
+        try {
+            val method = extensionInstance.javaClass.getMethod("fetchPopularManga", Int::class.java)
+            val observable = method.invoke(extensionInstance, page) ?: return emptyList()
+
+            val blocking = observable.javaClass.getMethod("toBlocking").invoke(observable)
+            val result = blocking.javaClass.getMethod("first").invoke(blocking) as? eu.kanade.tachiyomi.source.model.MangasPage
+                ?: return emptyList()
+
+            result.mangas.forEach { sManga ->
+                mangaList.add(
+                    MangaInfo(
+                        title      = sManga.title,
+                        url        = sManga.url,
+                        coverUrl   = sManga.thumbnail_url ?: "",
+                        author     = sManga.author ?: "",
+                        status     = sManga.status,
+                        sourceName = this.name,
+                        genres     = sManga.genre ?: ""
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "❌ [${this.name}] Error cargando Populares:", e)
+        }
+        return mangaList
+    }
+
+    override suspend fun fetchLatestUpdates(page: Int): List<MangaInfo> {        val TAG = "SHIORI_LATEST"
+        val mangaList = mutableListOf<MangaInfo>()
+
+        try {
+            val method = extensionInstance.javaClass.getMethod("fetchLatestUpdates", Int::class.java)
+            val observable = method.invoke(extensionInstance, page) ?: return emptyList()
+
+            val blocking = observable.javaClass.getMethod("toBlocking").invoke(observable)
+            val result = blocking.javaClass.getMethod("first").invoke(blocking) as? eu.kanade.tachiyomi.source.model.MangasPage
+                ?: return emptyList()
+
+            result.mangas.forEach { sManga ->
+                mangaList.add(
+                    MangaInfo(
+                        title      = sManga.title,
+                        url        = sManga.url,
+                        coverUrl   = sManga.thumbnail_url ?: "",
+                        author     = sManga.author ?: "",
+                        status     = sManga.status,
+                        sourceName = this.name,
+                        genres     = sManga.genre ?: ""
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "❌ [${this.name}] Error cargando Recientes:", e)
+        }
+        return mangaList
+    }
+
     private fun findAllMethodsByName(clazz: Class<*>, name: String): List<java.lang.reflect.Method> {
         val methods = mutableListOf<java.lang.reflect.Method>()
         var current: Class<*>? = clazz

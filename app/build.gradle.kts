@@ -67,6 +67,8 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp-urlconnection:4.12.0")
     implementation("app.cash.quickjs:quickjs-android:0.9.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json-okio:1.6.3")
+    implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-rx2:1.7.3")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

@@ -1,23 +1,33 @@
 package com.example.shioriapp.screens
 
+import android.content.pm.PackageManager
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable // 🔥 Importante para guardar estado entre navegaciones
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -25,180 +35,183 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.viewmodel.ExploreViewModel
-import kotlin.random.Random // 🔥 Para usar nuestra semilla
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExploreScreen(
     onMangaClick: (String, String, String) -> Unit,
     viewModel: ExploreViewModel = viewModel()
 ) {
     val state by viewModel.state.collectAsState()
-
     val context = LocalContext.current
 
-    val sessionSeed = rememberSaveable { Random.nextLong() }
-
-    // 🔥 Usamos la misma semilla para mezclar. Así siempre da el mismo resultado
-    // mientras la app esté abierta.
-    val heroManga = remember(state.allMangas, sessionSeed) {
-        if (state.allMangas.isNotEmpty()) {
-            state.allMangas.shuffled(Random(sessionSeed)).firstOrNull()
-        } else null
-    }
+    val heroManga = remember(state.allMangas) { state.allMangas.firstOrNull() }
 
     val customImageLoader = remember {
         coil.ImageLoader.Builder(context)
-            .okHttpClient {
-                eu.kanade.tachiyomi.network.NetworkHelper(context).client
-            }
+            .okHttpClient { eu.kanade.tachiyomi.network.NetworkHelper(context).client }
             .build()
     }
 
-    // 🔥 Usamos la misma semilla para la grilla. Si entras a "Acción", se mezcla con la semilla.
-    // Si entras a un manga y vuelves, se mezcla con la MISMA semilla, quedando exactamente igual.
-    val gridMangas = remember(state.displayMangas, sessionSeed, heroManga) {
-        state.displayMangas
-            .filter { it.url != heroManga?.url }
-            .shuffled(Random(sessionSeed))
+    val gridMangas = remember(state.displayMangas, heroManga) {
+        state.displayMangas.filter { it.url != heroManga?.url }.distinctBy { it.url }
     }
 
     val backgroundColor = MaterialTheme.colorScheme.background
 
-    if (state.isLoading && state.allMangas.isEmpty()) {
-        Box(Modifier.fillMaxSize().background(backgroundColor), Alignment.Center) {
-            CircularProgressIndicator()
-        }
-    } else {
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            modifier = Modifier.fillMaxSize().background(backgroundColor),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                if (heroManga != null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(420.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable { onMangaClick(heroManga.url, heroManga.sourceName, heroManga.title) }
-                    ) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data(heroManga.coverUrl ?: "")
-                                .crossfade(true)
-                                .build(),
-                            imageLoader = customImageLoader,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-
+    Box(modifier = Modifier.fillMaxSize().background(backgroundColor)) {
+        if (state.isLoading && state.allMangas.isEmpty()) {
+            Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // HERO MANGA
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    if (heroManga != null) {
                         Box(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Transparent,
-                                            Color.Black.copy(alpha = 0.3f),
-                                            backgroundColor.copy(alpha = 0.9f),
-                                            backgroundColor
-                                        ),
-                                        startY = 400f
-                                    )
-                                )
-                        )
-
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(horizontal = 16.dp, vertical = 24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                                .fillMaxWidth()
+                                .height(420.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { onMangaClick(heroManga.url, heroManga.sourceName, heroManga.title) }
                         ) {
-                            Text(
-                                text = heroManga.title,
-                                color = Color.White,
-                                fontSize = 28.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                textAlign = TextAlign.Center,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(bottom = 16.dp)
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(heroManga.coverUrl ?: "").crossfade(true).build(),
+                                imageLoader = customImageLoader,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
                             )
-
-                            Button(
-                                onClick = { onMangaClick(heroManga.url, heroManga.sourceName, heroManga.title) },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.White,
-                                    contentColor = Color.Black
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth(0.6f)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.3f), backgroundColor.copy(alpha = 0.9f), backgroundColor),
+                                            startY = 400f
+                                        )
+                                    )
+                            )
+                            Column(
+                                modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp, vertical = 24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Text("Leer ahora", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text(
+                                    text = heroManga.title, color = Color.White, fontSize = 28.sp,
+                                    fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 16.dp)
+                                )
+                                Button(
+                                    onClick = { onMangaClick(heroManga.url, heroManga.sourceName, heroManga.title) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                                    shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth(0.6f)
+                                ) {
+                                    Text("Leer ahora", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                ) {
-                    items(state.categories) { category ->
-                        val isSelected = state.selectedCategory == category
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { viewModel.setCategory(category) },
-                            label = {
-                                Text(
-                                    text = category,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                )
-                            },
-                            shape = RoundedCornerShape(16.dp)
+                // CATEGORÍAS
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                    ) {
+                        items(state.categories) { category ->
+                            val isSelected = state.selectedCategory == category
+                            FilterChip(
+                                selected = isSelected, onClick = { viewModel.setCategory(category) },
+                                label = { Text(category, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                        }
+                    }
+                }
+
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text(
+                        text = if (state.selectedCategory == "Todo") "Tendencias para ti" else "Explorar ${state.selectedCategory}",
+                        fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                    )
+                }
+
+                // GRILLA DE MANGAS GLOBAL
+                if (state.isLoading && state.allMangas.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) { Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
+                } else if (gridMangas.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) { Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { Text("No hay resultados en esta categoría.", color = Color.Gray) } }
+                } else {
+                    itemsIndexed(items = gridMangas, key = { _, manga -> manga.url }) { index, manga ->
+                        MangaGridItem(
+                            title = manga.title, coverUrl = manga.coverUrl ?: "",
+                            imageLoader = customImageLoader, onClick = { onMangaClick(manga.url, manga.sourceName, manga.title) }
                         )
+                        if (index >= gridMangas.lastIndex - 6 && !state.isLoadingMore && !state.isLastPage) {
+                            LaunchedEffect(gridMangas.size) { viewModel.loadMoreMangas() }
+                        }
                     }
+                }
+
+                if (state.isLoadingMore) {
+                    item(span = { GridItemSpan(maxLineSpan) }) { Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
                 }
             }
+        }
 
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Text(
-                    text = if (state.selectedCategory == "Todo") "Tendencias para ti" else "Explorar ${state.selectedCategory}",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-                )
-            }
+        // 🔥 POPUP INMERSIVO MODAL
+        if (state.isShowingSources) {
+            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-            if (state.isLoading) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                }
-            } else if (gridMangas.isEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        Text("No hay resultados en esta categoría.", color = Color.Gray)
-                    }
-                }
-            } else {
-                items(gridMangas) { manga ->
-                    MangaGridItem(
-                        title = manga.title,
-                        coverUrl = manga.coverUrl ?: "",
+            ModalBottomSheet(
+                onDismissRequest = {
+                    viewModel.toggleSourcesView(false)
+                    viewModel.closeExtensionCatalog()
+                },
+                sheetState = sheetState,
+                containerColor = MaterialTheme.colorScheme.background,
+                dragHandle = { BottomSheetDefaults.DragHandle() }
+            ) {
+                if (state.selectedExtension == null) {
+                    Text(
+                        text = "Tus Extensiones",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 24.dp, bottom = 8.dp)
+                    )
+                    SourcesList(
+                        sources = state.availableSources,
+                        onSourceClick = { sourceName -> viewModel.openExtensionCatalog(sourceName) }
+                    )
+                } else {
+                    // 🔥 REVOLUCIÓN DE NAVEGACIÓN: Quitamos el toggleSourcesView(false)
+                    // Así el popup se queda vivo al irse a detalles y sigue esperándote al volver.
+                    ExtensionCatalogView(
+                        sourceName = state.selectedExtension!!,
+                        mangas = state.extensionMangas,
+                        isLoading = state.isExtensionLoading,
+                        isLoadingMore = state.isExtensionLoadingMore,
+                        selectedTab = state.extensionTab,
+                        onTabSelected = { viewModel.setExtensionTab(it) },
+                        onBack = { viewModel.closeExtensionCatalog() },
+                        onMangaClick = { manga ->
+                            onMangaClick(manga.url, manga.sourceName, manga.title) // Navega directo
+                        },
                         imageLoader = customImageLoader,
-                        onClick = { onMangaClick(manga.url, manga.sourceName, manga.title) }
+                        onLoadMore = { viewModel.loadMoreExtensionMangas() }
                     )
                 }
             }
@@ -206,49 +219,172 @@ fun ExploreScreen(
     }
 }
 
+// 🔥 VISTA INTERNA DEL CATÁLOGO (Estilo Premium moderno y virtualizado)
 @Composable
-fun MangaGridItem(
-    title: String,
-    coverUrl: String,
+fun ExtensionCatalogView(
+    sourceName: String,
+    mangas: List<MangaInfo>,
+    isLoading: Boolean,
+    isLoadingMore: Boolean,
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit,
+    onBack: () -> Unit,
+    onMangaClick: (MangaInfo) -> Unit,
     imageLoader: coil.ImageLoader,
-    onClick: () -> Unit
+    onLoadMore: () -> Unit
 ) {
-    LaunchedEffect(coverUrl) {
-        android.util.Log.e("SHIORI_IMAGE_DEBUG", "Intentando cargar: '$coverUrl' para el manga: $title")
-    }
+    val context = LocalContext.current
+    val packageManager = context.packageManager
+    val sourceIcon = remember(sourceName) { getExtensionIcon(packageManager, sourceName) }
 
+    val distinctMangas = remember(mangas) { mangas.distinctBy { it.url } }
+
+    Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+            IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Volver") }
+
+            if (sourceIcon != null) {
+                Image(
+                    bitmap = sourceIcon.toBitmap().asImageBitmap(), contentDescription = null,
+                    modifier = Modifier.size(28.dp).clip(CircleShape).padding(end = 6.dp)
+                )
+            }
+
+            Text(
+                text = sourceName, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
+            IconButton(onClick = { }) { Icon(Icons.Default.FilterList, contentDescription = "Filtros") }
+            IconButton(onClick = { }) { Icon(Icons.Default.Search, contentDescription = "Buscar") }
+        }
+
+        TabRow(
+            selectedTabIndex = selectedTab,
+            containerColor = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 8.dp)
+        ) {
+            val tabs = listOf("Populares", "Recientes", "Todo")
+            tabs.forEachIndexed { index, title ->
+                Tab(
+                    selected = selectedTab == index, onClick = { onTabSelected(index) },
+                    text = { Text(title, fontWeight = FontWeight.Bold, fontSize = 14.sp) }
+                )
+            }
+        }
+
+        if (isLoading) {
+            Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+        } else if (distinctMangas.isEmpty()) {
+            Box(Modifier.fillMaxSize(), Alignment.Center) { Text("No se encontraron resultados.", color = Color.Gray) }
+        } else {
+            // Virtualizado y optimizado para teléfonos gama baja (idéntico a la grilla global)
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp, top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                itemsIndexed(items = distinctMangas, key = { _, manga -> manga.url }) { index, manga ->
+                    MangaGridItem(
+                        title = manga.title, coverUrl = manga.coverUrl ?: "",
+                        imageLoader = imageLoader, onClick = { onMangaClick(manga) }
+                    )
+
+                    if (index >= distinctMangas.lastIndex - 6 && !isLoadingMore) {
+                        LaunchedEffect(distinctMangas.size) { onLoadMore() }
+                    }
+                }
+
+                if (isLoadingMore) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Box(Modifier.fillMaxWidth().padding(16.dp), Alignment.Center) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SourcesList(sources: List<String>, onSourceClick: (String) -> Unit) {
+    val context = LocalContext.current
+    val packageManager = context.packageManager
+
+    if (sources.isEmpty()) {
+        Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+            Text("No tienes extensiones instaladas.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 48.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(sources) { sourceName ->
+                val sourceIcon = remember(sourceName) { getExtensionIcon(packageManager, sourceName) }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onSourceClick(sourceName) },
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (sourceIcon != null) {
+                                Image(
+                                    bitmap = sourceIcon.toBitmap().asImageBitmap(), contentDescription = null,
+                                    modifier = Modifier.fillMaxSize().padding(4.dp)
+                                )
+                            } else {
+                                Icon(Icons.Default.Extension, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(sourceName, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            Text("Extensión instalada", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Icon(Icons.Default.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun getExtensionIcon(packageManager: PackageManager, sourceName: String): android.graphics.drawable.Drawable? {
+    return try {
+        val packages = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+        val extensionPackage = packages.firstOrNull { appInfo ->
+            (appInfo.packageName.contains("eu.kanade.tachiyomi.extension") || appInfo.packageName.contains("keiyoushin.extension")) &&
+                    packageManager.getApplicationLabel(appInfo).toString().contains(sourceName, ignoreCase = true)
+        }
+        extensionPackage?.loadIcon(packageManager)
+    } catch (e: Exception) { null }
+}
+
+@Composable
+fun MangaGridItem(title: String, coverUrl: String, imageLoader: coil.ImageLoader, onClick: () -> Unit) {
     Column(modifier = Modifier.clickable { onClick() }.fillMaxWidth()) {
         AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(coverUrl)
+            model = ImageRequest.Builder(LocalContext.current).data(coverUrl)
                 .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
                 .addHeader("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
-                .addHeader("Referer", coverUrl)
-                .crossfade(true)
-                .build(),
-            imageLoader = imageLoader,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            onSuccess = {
-                android.util.Log.d("SHIORI_IMAGE_DEBUG", "✅ ÉXITO cargando: $title")
-            },
-            onError = { error ->
-                android.util.Log.e("SHIORI_IMAGE_DEBUG", "❌ FALLÓ: $title | Razón: ${error.result.throwable.message}")
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.7f)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color.DarkGray)
+                .addHeader("Referer", coverUrl).crossfade(true).build(),
+            imageLoader = imageLoader, contentDescription = null, contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxWidth().aspectRatio(0.7f).clip(RoundedCornerShape(8.dp)).background(Color.DarkGray)
         )
         Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = title,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            lineHeight = 14.sp,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
+        Text(title, fontSize = 12.sp, fontWeight = FontWeight.Medium, lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }

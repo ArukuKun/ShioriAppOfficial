@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -37,6 +38,7 @@ import com.example.shioriapp.data.repository.LibraryManager
 import com.example.shioriapp.domain.model.ChapterInfo
 import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.screens.*
+import com.example.shioriapp.viewmodel.ExploreViewModel // 🔥 Aseguramos la importación del ExploreViewModel
 import org.json.JSONArray
 import java.io.File
 import java.net.URLDecoder
@@ -297,6 +299,10 @@ fun MainTabsScreen(rootNavController: NavHostController) {
     var showNotifications by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
+    // 🔥 1. CREAMOS EL VIEWMODEL AQUÍ ARRIBA
+    // Al crearlo aquí, tanto la barra de navegación como la pantalla Explore pueden usarlo y compartir la información.
+    val exploreViewModel: ExploreViewModel = viewModel()
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
@@ -314,10 +320,17 @@ fun MainTabsScreen(rootNavController: NavHostController) {
                         selected = currentRoute == route,
                         onClick = {
                             if (currentRoute != route) {
+                                // Navegación normal si tocamos otra pestaña
                                 tabsNavController.navigate(route) {
                                     popUpTo(Routes.HOME) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
+                                }
+                            } else {
+                                // 🔥 2. LÓGICA DE DOBLE TOQUE
+                                // Si ya estamos en la pestaña y la volvemos a tocar...
+                                if (route == Routes.EXPLORE) {
+                                    exploreViewModel.toggleSourcesView(true) // ¡Dispara el PopUp!
                                 }
                             }
                         }
@@ -332,8 +345,6 @@ fun MainTabsScreen(rootNavController: NavHostController) {
             startDestination = Routes.HOME,
             modifier = Modifier
                 .fillMaxSize()
-                // 🔥 EL FIX ESTÁ AQUÍ: Solo tomamos el padding de abajo.
-                // Ignoramos el top padding porque la MainTopAppBar ya hace ese empuje sola.
                 .padding(bottom = innerPadding.calculateBottomPadding()),
             enterTransition = { fadeIn(tween(200)) },
             exitTransition = { fadeOut(tween(200)) }
@@ -407,12 +418,15 @@ fun MainTabsScreen(rootNavController: NavHostController) {
                         onNotificationsClick = { showNotifications = !showNotifications }
                     )
                     Box(modifier = Modifier.weight(1f)) {
-                        ExploreScreen(onMangaClick = { url, source, title ->
-                            val encUrl = URLEncoder.encode(url, "UTF-8")
-                            val encTitle = URLEncoder.encode(title, "UTF-8")
-                            val encSource = URLEncoder.encode(source, "UTF-8")
-                            rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=false")
-                        })
+                        ExploreScreen(
+                            viewModel = exploreViewModel, // 🔥 3. INYECTAMOS EL VIEWMODEL AQUÍ
+                            onMangaClick = { url, source, title ->
+                                val encUrl = URLEncoder.encode(url, "UTF-8")
+                                val encTitle = URLEncoder.encode(title, "UTF-8")
+                                val encSource = URLEncoder.encode(source, "UTF-8")
+                                rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=false")
+                            }
+                        )
                     }
                 }
             }
@@ -463,14 +477,12 @@ fun NotificationDropdown(expanded: Boolean, onDismiss: () -> Unit) {
             Text("No tienes ninguna notificación.", fontSize = 14.sp, textAlign = TextAlign.Center)
         }
     }
-
 }
 
 private fun safeUrlDecode(encoded: String): String {
     return try {
         URLDecoder.decode(encoded, "UTF-8")
     } catch (e: Exception) {
-        // Si falla el decode, devolvemos el string tal cual sin crashear
         android.util.Log.w("SHIORI_NAV", "URLDecode falló para: $encoded — usando raw")
         encoded
     }
