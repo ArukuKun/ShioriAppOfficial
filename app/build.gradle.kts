@@ -63,6 +63,12 @@ dependencies {
     val roomVersion = "2.6.1"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
+    implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("com.squareup.okhttp3:okhttp-urlconnection:4.12.0")
+    implementation("app.cash.quickjs:quickjs-android:0.9.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json-okio:1.6.3")
+    implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-rx2:1.7.3")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

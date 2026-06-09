@@ -22,10 +22,8 @@ object ExtensionLoader {
 
     private var isInjektInitialized = false
 
-    // 🔥 LA BÓVEDA: Guardamos las extensiones por su nombre (ej: "Manhwa Scan")
     private val activeSources = mutableMapOf<String, Source>()
 
-    // Función súper rápida para obtener la extensión sin usar el PackageManager
     fun getSource(sourceName: String): Source? {
         return activeSources[sourceName]
     }
@@ -71,7 +69,7 @@ object ExtensionLoader {
                 Injekt.importModule(object : InjektModule {
                     override fun InjektRegistrar.registerInjectables() {
                         addSingleton(context.applicationContext as android.app.Application)
-                        addSingleton(eu.kanade.tachiyomi.network.NetworkHelper())
+                        addSingleton(eu.kanade.tachiyomi.network.NetworkHelper(context.applicationContext))
                         addSingleton(
                             kotlinx.serialization.json.Json {
                                 ignoreUnknownKeys = true
@@ -117,11 +115,57 @@ object ExtensionLoader {
                     val adapter = SourceAdapter(source, pkgName, packageManager, appInfo)
                     generatedSources.add(adapter)
                     android.util.Log.d("ShioriApp", "🌍 Fábrica generó: ${adapter.name} (${source.lang})")
+
+                    // 🔬 DIAGNÓSTICO: solo para MangaNoSekai
+                    if (adapter.name.contains("Sekai", ignoreCase = true) ||
+                        adapter.name.contains("Nosek", ignoreCase = true) ||
+                        pkgName.contains("sekai", ignoreCase = true)) {
+
+                        android.util.Log.e("SHIORI_DIAG", "==============================================")
+                        android.util.Log.e("SHIORI_DIAG", "🔬 DIAGNÓSTICO de ${adapter.name}")
+                        android.util.Log.e("SHIORI_DIAG", "📦 Paquete:     $pkgName")
+                        android.util.Log.e("SHIORI_DIAG", "🏷️  Label APK:  ${packageManager.getApplicationLabel(appInfo)}")
+                        android.util.Log.e("SHIORI_DIAG", "📌 Clase:       $sourceClassName")
+                        android.util.Log.e("SHIORI_DIAG", "🌐 Lang:        ${adapter.lang}")
+                        android.util.Log.e("SHIORI_DIAG", "🔑 ID:          ${adapter.id}")
+                        android.util.Log.e("SHIORI_DIAG", "--- Métodos relacionados con búsqueda ---")
+                        source.javaClass.methods
+                            .filter {
+                                it.name.contains("search", ignoreCase = true) ||
+                                        it.name.contains("Search", ignoreCase = true)
+                            }
+                            .forEach {
+                                android.util.Log.e("SHIORI_DIAG", "   🔧 ${it.name} | params: ${it.parameterCount} | tipos: ${it.parameterTypes.map { p -> p.simpleName }}")
+                            }
+                    }
                 }
             } else if (sourceInstance is eu.kanade.tachiyomi.source.Source) {
                 val adapter = SourceAdapter(sourceInstance, pkgName, packageManager, appInfo)
                 generatedSources.add(adapter)
                 android.util.Log.d("ShioriApp", "📄 Extensión cargada: ${adapter.name} (${sourceInstance.lang})")
+
+                // 🔬 DIAGNÓSTICO: solo para MangaNoSekai
+                if (adapter.name.contains("Sekai", ignoreCase = true) ||
+                    adapter.name.contains("Nosek", ignoreCase = true) ||
+                    pkgName.contains("sekai", ignoreCase = true)) {
+
+                    android.util.Log.e("SHIORI_DIAG", "==============================================")
+                    android.util.Log.e("SHIORI_DIAG", "🔬 DIAGNÓSTICO de ${adapter.name}")
+                    android.util.Log.e("SHIORI_DIAG", "📦 Paquete:     $pkgName")
+                    android.util.Log.e("SHIORI_DIAG", "🏷️  Label APK:  ${packageManager.getApplicationLabel(appInfo)}")
+                    android.util.Log.e("SHIORI_DIAG", "📌 Clase:       $sourceClassName")
+                    android.util.Log.e("SHIORI_DIAG", "🌐 Lang:        ${adapter.lang}")
+                    android.util.Log.e("SHIORI_DIAG", "🔑 ID:          ${adapter.id}")
+                    android.util.Log.e("SHIORI_DIAG", "--- Métodos relacionados con búsqueda ---")
+                    sourceInstance.javaClass.methods
+                        .filter {
+                            it.name.contains("search", ignoreCase = true) ||
+                                    it.name.contains("Search", ignoreCase = true)
+                        }
+                        .forEach {
+                            android.util.Log.e("SHIORI_DIAG", "   🔧 ${it.name} | params: ${it.parameterCount} | tipos: ${it.parameterTypes.map { p -> p.simpleName }}")
+                        }
+                }
             } else {
                 android.util.Log.w("ShioriApp", "La clase no es ni Source ni SourceFactory")
             }
@@ -133,7 +177,6 @@ object ExtensionLoader {
             return emptyList()
         }
     }
-
     private fun showToast(context: Context, message: String) {
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
@@ -192,39 +235,145 @@ class SourceAdapter(
     }
 
     override suspend fun fetchSearchManga(query: String, page: Int): List<MangaInfo> {
+        val TAG = "SHIORI_SEARCH"
         val mangaList = mutableListOf<MangaInfo>()
+
+        android.util.Log.e(TAG, "==================================================")
+        android.util.Log.e(TAG, "🔍 BUSCANDO: '$query' en fuente: ${this.name} | Página: $page")
+
         try {
-            val method = extensionInstance.javaClass.getMethod(
-                "fetchSearchManga",
-                Int::class.java,
-                String::class.java,
-                eu.kanade.tachiyomi.source.model.FilterList::class.java
-            )
+            val method = try {
+                extensionInstance.javaClass.getMethod(
+                    "fetchSearchManga",
+                    Int::class.java,
+                    String::class.java,
+                    eu.kanade.tachiyomi.source.model.FilterList::class.java
+                )
+            } catch (e: NoSuchMethodException) {
+                android.util.Log.e(TAG, "❌ [${this.name}] No tiene método fetchSearchManga — puede ser API moderna")
+                null
+            }
+
+            if (method == null) {
+                // Intentar API moderna (suspend)
+                val modernMethod = extensionInstance.javaClass.methods
+                    .firstOrNull { it.name == "getSearchManga" || it.name == "search" }
+                android.util.Log.e(TAG, "⚠️ [${this.name}] Método moderno encontrado: ${modernMethod?.name ?: "NINGUNO"}")
+                return emptyList()
+            }
+
+            android.util.Log.e(TAG, "✅ [${this.name}] Método fetchSearchManga encontrado, invocando...")
+
             val emptyFilters = eu.kanade.tachiyomi.source.model.FilterList(emptyList())
             val observable = method.invoke(extensionInstance, page, query, emptyFilters)
 
-            if (observable != null) {
-                val blocking = observable.javaClass.getMethod("toBlocking").invoke(observable)
-                val result = blocking.javaClass.getMethod("first").invoke(blocking)
-                        as? eu.kanade.tachiyomi.source.model.MangasPage
-
-                result?.mangas?.forEach { sManga ->
-                    android.util.Log.d(TAG, "📦 Recibido de extensión -> Título: ${sManga.title} | Géneros: ${sManga.genre}")
-                    mangaList.add(
-                        MangaInfo(
-                            title      = sManga.title,
-                            url        = sManga.url,
-                            coverUrl   = sManga.thumbnail_url ?: "",
-                            author     = sManga.author ?: "",
-                            status     = sManga.status,
-                            sourceName = this.name,
-                            genres     = sManga.genre ?: ""
-                        )
-                    )
-                }
+            if (observable == null) {
+                android.util.Log.e(TAG, "❌ [${this.name}] El observable devuelto es NULL")
+                return emptyList()
             }
+
+            android.util.Log.e(TAG, "✅ [${this.name}] Observable recibido: ${observable.javaClass.name}")
+
+            val blocking = observable.javaClass.getMethod("toBlocking").invoke(observable)
+            val result = blocking.javaClass.getMethod("first").invoke(blocking)
+                    as? eu.kanade.tachiyomi.source.model.MangasPage
+
+            if (result == null) {
+                android.util.Log.e(TAG, "❌ [${this.name}] MangasPage es NULL tras blocking.first()")
+                return emptyList()
+            }
+
+            android.util.Log.e(TAG, "📦 [${this.name}] MangasPage recibida — mangas encontrados: ${result.mangas.size}")
+
+            if (result.mangas.isEmpty()) {
+                android.util.Log.e(TAG, "⚠️ [${this.name}] La extensión respondió pero con 0 resultados para '$query'")
+                return emptyList()
+            }
+
+            result.mangas.forEach { sManga ->
+                android.util.Log.d(TAG, "   📖 Título: ${sManga.title} | URL: ${sManga.url}")
+                mangaList.add(
+                    MangaInfo(
+                        title      = sManga.title,
+                        url        = sManga.url,
+                        coverUrl   = sManga.thumbnail_url ?: "",
+                        author     = sManga.author ?: "",
+                        status     = sManga.status,
+                        sourceName = this.name,
+                        genres     = sManga.genre ?: ""
+                    )
+                )
+            }
+
+            android.util.Log.e(TAG, "🏁 [${this.name}] TOTAL RETORNADO: ${mangaList.size} mangas")
+
+        } catch (e: java.lang.reflect.InvocationTargetException) {
+            android.util.Log.e(TAG, "💀 [${this.name}] Error INTERNO de la extensión:", e.targetException)
+            e.targetException?.printStackTrace()
         } catch (e: Throwable) {
-            android.util.Log.e("ShioriApp", "Error de búsqueda en ${this.name}", e)
+            android.util.Log.e(TAG, "💀 [${this.name}] Error GENERAL en búsqueda:", e)
+            e.printStackTrace()
+        }
+
+        return mangaList
+    }
+
+    override suspend fun fetchPopularManga(page: Int): List<MangaInfo> {        val TAG = "SHIORI_POPULAR"
+        val mangaList = mutableListOf<MangaInfo>()
+
+        try {
+            val method = extensionInstance.javaClass.getMethod("fetchPopularManga", Int::class.java)
+            val observable = method.invoke(extensionInstance, page) ?: return emptyList()
+
+            val blocking = observable.javaClass.getMethod("toBlocking").invoke(observable)
+            val result = blocking.javaClass.getMethod("first").invoke(blocking) as? eu.kanade.tachiyomi.source.model.MangasPage
+                ?: return emptyList()
+
+            result.mangas.forEach { sManga ->
+                mangaList.add(
+                    MangaInfo(
+                        title      = sManga.title,
+                        url        = sManga.url,
+                        coverUrl   = sManga.thumbnail_url ?: "",
+                        author     = sManga.author ?: "",
+                        status     = sManga.status,
+                        sourceName = this.name,
+                        genres     = sManga.genre ?: ""
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "❌ [${this.name}] Error cargando Populares:", e)
+        }
+        return mangaList
+    }
+
+    override suspend fun fetchLatestUpdates(page: Int): List<MangaInfo> {        val TAG = "SHIORI_LATEST"
+        val mangaList = mutableListOf<MangaInfo>()
+
+        try {
+            val method = extensionInstance.javaClass.getMethod("fetchLatestUpdates", Int::class.java)
+            val observable = method.invoke(extensionInstance, page) ?: return emptyList()
+
+            val blocking = observable.javaClass.getMethod("toBlocking").invoke(observable)
+            val result = blocking.javaClass.getMethod("first").invoke(blocking) as? eu.kanade.tachiyomi.source.model.MangasPage
+                ?: return emptyList()
+
+            result.mangas.forEach { sManga ->
+                mangaList.add(
+                    MangaInfo(
+                        title      = sManga.title,
+                        url        = sManga.url,
+                        coverUrl   = sManga.thumbnail_url ?: "",
+                        author     = sManga.author ?: "",
+                        status     = sManga.status,
+                        sourceName = this.name,
+                        genres     = sManga.genre ?: ""
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "❌ [${this.name}] Error cargando Recientes:", e)
         }
         return mangaList
     }
@@ -261,6 +410,9 @@ class SourceAdapter(
                     try {
                         kotlinx.coroutines.suspendCancellableCoroutine<Any?> { continuation ->
                             try {
+                                val cookiesActuales = android.webkit.CookieManager.getInstance()
+                                    .getCookie("https://mangasnosekai.com")
+                                android.util.Log.e("SHIORI_COOKIES", "🍪 Cookies para mangasnosekai.com: $cookiesActuales")
                                 val res = getMethod.invoke(extensionInstance, sManga, continuation)
                                 if (res !== kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED) {
                                     continuation.resumeWith(Result.success(res))
@@ -309,7 +461,6 @@ class SourceAdapter(
                             if (reqMethod != null) {
                                 request = reqMethod.invoke(extensionInstance, sManga) as? okhttp3.Request
                             } else {
-                                // 🔥 ¡El gran truco! Construimos la petición a mano porque tu app no tiene el método base
                                 val baseUrlMethod = allMethods.firstOrNull { it.name == "getBaseUrl" }
                                 val baseUrl = baseUrlMethod?.invoke(extensionInstance) as? String
 
@@ -362,7 +513,6 @@ class SourceAdapter(
                     }
                 }
 
-                // Devolvemos la info limpia
                 val finalObject = resultDetails ?: sManga
                 return@withContext extractMangaInfo(finalObject, manga)
 

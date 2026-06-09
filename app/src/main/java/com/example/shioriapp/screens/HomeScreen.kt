@@ -37,11 +37,10 @@ fun HomeScreen(
 
     val progressMap by LibraryManager.progressMap.collectAsState()
 
-    // 🔥 CORRECCIÓN 1: Agregamos la variable de tu biblioteca que faltaba
     val biblioteca by LibraryManager.library.collectAsState()
 
     val continueReadingList = remember(progressMap) {
-        val list = mutableListOf<MangaInfo>() // Tipo explícito más limpio
+         val tempList = mutableListOf<Pair<MangaInfo, Long>>()
 
         progressMap.forEach { (url, progress) ->
             if (progress.lastChapterUrl.isNotBlank()) {
@@ -58,25 +57,27 @@ fun HomeScreen(
                             if (capsFile.exists()) capsFile.delete()
                             throw Exception("Caché corrupto detectado y eliminado")
                         }
-                        list.add(
-                            MangaInfo(
-                                title = mObj.optString("title"),
-                                url = url,
-                                coverUrl = mObj.optString("coverUrl"),
-                                description = mObj.optString("description"),
-                                author = mObj.optString("author"),
-                                status = mObj.optInt("status"),
-                                genres = mObj.optString("genres"),
-                                sourceName = cachedSource
-                            )
+
+                        val manga = MangaInfo(
+                            title = mObj.optString("title"),
+                            url = url,
+                            coverUrl = mObj.optString("coverUrl"),
+                            description = mObj.optString("description"),
+                            author = mObj.optString("author"),
+                            status = mObj.optInt("status"),
+                            genres = mObj.optString("genres"),
+                            sourceName = cachedSource
                         )
+
+                        tempList.add(Pair(manga, progress.lastReadTime))
+
                     } catch (e: Exception) {
 
                     }
                 }
             }
         }
-        list
+        tempList.sortedByDescending { it.second }.map { it.first }
     }
 
     LazyVerticalGrid(

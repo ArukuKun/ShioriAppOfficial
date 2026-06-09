@@ -27,7 +27,7 @@ data class ExtensionGroup(
 
 data class SourceSearchResult(
     val sourceName: String,
-    val mangas: List<MangaInfo>? = null, // Si es null, mostrará el spinner de cargando
+    val mangas: List<MangaInfo>? = null,
     val error: String? = null
 )
 
@@ -49,7 +49,6 @@ class SearchViewModel : ViewModel() {
 
     private val searchMutex = Mutex()
 
-    // 🔥 Variables para controlar la búsqueda automática mientras escribes
     private var typingJob: Job? = null
     private var searchJob: Job? = null
 
@@ -82,11 +81,9 @@ class SearchViewModel : ViewModel() {
     fun onQueryChange(query: String) {
         _searchQuery.value = query
 
-        // 🔥 Cancelamos el temporizador anterior y la búsqueda en curso cada vez que tocas una tecla
         typingJob?.cancel()
         searchJob?.cancel()
 
-        // Si borraste todo el texto, limpiamos la pantalla de inmediato
         if (query.isBlank()) {
             _globalSearchResults.value = emptyList()
             return

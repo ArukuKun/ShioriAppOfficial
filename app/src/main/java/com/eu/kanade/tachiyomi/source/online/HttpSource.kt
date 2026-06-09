@@ -12,18 +12,17 @@ import okhttp3.Response
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import rx.Observable
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 abstract class HttpSource : CatalogueSource {
 
-    // Generador de ID único para que MangaDex pueda guardar sus preferencias
     override val id: Long
         get() = (name + lang).hashCode().toLong()
 
     open val versionId = 1
 
-    // Herramienta de red oficial para saltar Cloudflare y peticiones
-    open val network = NetworkHelper()
-
+    open val network: NetworkHelper = Injekt.get()
     open val client: OkHttpClient
         get() = network.client
 
@@ -70,7 +69,6 @@ abstract class HttpSource : CatalogueSource {
     abstract fun searchMangaParse(response: Response): MangasPage
 }
 
-// Lo separamos limpiamente para que no quede atrapado dentro de HttpSource
 abstract class ParsedHttpSource : HttpSource() {
     override fun searchMangaParse(response: Response): MangasPage {
         val document = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())

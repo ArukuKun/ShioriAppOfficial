@@ -1,12 +1,17 @@
 package com.example.shioriapp.screens
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.util.Log
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -39,29 +44,61 @@ import coil.request.ImageRequest
 import com.example.shioriapp.R
 import com.example.shioriapp.data.repository.LibraryManager
 import com.example.shioriapp.domain.model.ChapterInfo
+import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.viewmodel.MangaDetailViewModel
+import com.example.shioriapp.core.util.MangaDownloader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MangaDetailsScreen(
-    mangaUrl: String = "",
-    sourceName: String = "",
-    mangaTitle: String = "Cargando...",
-    autoResume: Boolean = false,
-    onBack: () -> Unit = {},
-    onCategoryClick: (String) -> Unit = {},
-    onChapterClick: (ChapterInfo, List<ChapterInfo>) -> Unit = { _, _ -> },
+    mangaUrl: String,
+    sourceName: String,
+    mangaTitle: String,
+    autoResume: Boolean,
+    onBack: () -> Unit,
+    onChapterClick: (ChapterInfo, List<ChapterInfo>) -> Unit,
+    onCategoryClick: () -> Unit,
+    onMigrateClick: (MangaInfo) -> Unit,
+    onDownloadChapter: (ChapterInfo) -> Unit,
+    onDownloadAll: (List<ChapterInfo>) -> Unit,
+    onDeleteChapter: (ChapterInfo) -> Unit,
     viewModel: MangaDetailViewModel = viewModel()
 ) {
     val state by viewModel.state.collectAsState()
     val localContext = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     val sortDescending by LibraryManager.isChapterSortDescending.collectAsState()
     var showSortMenu by remember { mutableStateOf(false) }
 
+    // 🔥 Variable de estado para controlar la sinopsis
+    var isSynopsisExpanded by remember { mutableStateOf(false) }
+
+    // 🔥 Estado mejorado para el porcentaje de descarga
+    val downloadStates = remember { mutableStateMapOf<String, DownloadState>() }
+
     LaunchedEffect(mangaUrl) {
         LibraryManager.init(localContext)
         viewModel.loadMangaDetails(localContext, mangaUrl, sourceName, mangaTitle)
+    }
+
+    val prefs = localContext.getSharedPreferences("shiori_storage", Context.MODE_PRIVATE)
+    val downloadPath = prefs.getString("download_path", "") ?: ""
+
+    LaunchedEffect(state.chapters, downloadPath) {
+        if (downloadPath.startsWith("content://") && state.chapters.isNotEmpty()) {
+            coroutineScope.launch(Dispatchers.IO) {
+                state.chapters.forEach { chapter ->
+                    val exists = MangaDownloader.isChapterDownloaded(localContext, downloadPath, mangaTitle, chapter.name)
+                    withContext(Dispatchers.Main) {
+                        downloadStates[chapter.url] = if (exists) DownloadState.Downloaded else DownloadState.None
+                    }
+                }
+            }
+        }
     }
 
     val library by LibraryManager.library.collectAsState()
@@ -72,35 +109,34 @@ fun MangaDetailsScreen(
     val progressMap by LibraryManager.progressMap.collectAsState()
     val mangaProgress = progressMap[mangaUrl]
 
+    val scrollState = rememberScrollState()
+    val isAtBottom by remember {
+        derivedStateOf {
+            scrollState.maxValue > 0 && scrollState.value >= (scrollState.maxValue - 50)
+        }
+    }
+
     val sortedChapters = remember(state.chapters, sortDescending) {
         if (sortDescending) state.chapters else state.chapters.reversed()
     }
-
     val chaptersAsc = remember(state.chapters) { state.chapters.reversed() }
-
     val readChapters = mangaProgress?.readChapters ?: emptySet()
     val hasProgress = mangaProgress?.lastChapterUrl?.isNotBlank() == true
-    val allRead = hasProgress && chaptersAsc.isNotEmpty() &&
-            chaptersAsc.all { it.url in readChapters }
+    val allRead = hasProgress && chaptersAsc.isNotEmpty() && chaptersAsc.all { it.url in readChapters }
 
     val chapterToOpen: ChapterInfo? = when {
         chaptersAsc.isEmpty() -> null
         hasProgress -> {
             val lastReadIndex = chaptersAsc.indexOfFirst { it.url == mangaProgress?.lastChapterUrl }
             val lastChapterFinished = mangaProgress?.lastChapterUrl in readChapters
-
             when {
-                lastReadIndex >= 0 && lastReadIndex < chaptersAsc.lastIndex && lastChapterFinished ->
-                    chaptersAsc[lastReadIndex + 1]
-                else ->
-                    chaptersAsc[lastReadIndex.coerceAtLeast(0)]
+                lastReadIndex >= 0 && lastReadIndex < chaptersAsc.lastIndex && lastChapterFinished -> chaptersAsc[lastReadIndex + 1]
+                else -> chaptersAsc[lastReadIndex.coerceAtLeast(0)]
             }
         }
         else -> chaptersAsc.first()
     }
 
-    // ── LÓGICA DE AUTO-REANUDAR DEFINITIVA ──────────────────────────────────
-    // rememberSaveable sobrevive cuando vas al lector y regresas, arreglando el bucle infinito
     var hasAutoResumed by rememberSaveable { mutableStateOf(false) }
     var hasStartedLoading by remember { mutableStateOf(false) }
     val isCurrentlyAutoResuming = autoResume && !hasAutoResumed
@@ -111,28 +147,16 @@ fun MangaDetailsScreen(
         } else if (hasStartedLoading) {
             if (isCurrentlyAutoResuming) {
                 if (state.chapters.isNotEmpty() && chapterToOpen != null) {
-                    hasAutoResumed = true // Marca la acción como consumida
+                    hasAutoResumed = true
                     onChapterClick(chapterToOpen, state.chapters)
                 } else {
-                    hasAutoResumed = true // Si hay error, cancela para no quedarse colgado
+                    hasAutoResumed = true
                 }
             }
         }
     }
 
-    // Seguro anti-cuelgues por mala conexión
-    LaunchedEffect(isCurrentlyAutoResuming) {
-        if (isCurrentlyAutoResuming) {
-            kotlinx.coroutines.delay(5000)
-            if (!hasAutoResumed) hasAutoResumed = true
-        }
-    }
-
-    // ────────────────────────────────────────────────────────────────────────
-
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-
-        // ── CONTENIDO BASE (Solo visible si no estamos reanudando) ──────────
         AsyncImage(
             model = ImageRequest.Builder(localContext).data(state.manga?.coverUrl).build(),
             contentDescription = null,
@@ -144,37 +168,28 @@ fun MangaDetailsScreen(
             containerColor = Color.Transparent,
             floatingActionButton = {
                 if (chapterToOpen != null) {
-                    ExtendedFloatingActionButton(
-                        onClick = {
-                            if (allRead) {
-                                LibraryManager.unmarkAllChapters(localContext, mangaUrl)
-                                onChapterClick(chaptersAsc.first(), state.chapters)
-                            } else {
-                                onChapterClick(chapterToOpen, state.chapters)
-                            }
-                        },
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = Color.DarkGray,
-                        icon = {
-                            Icon(
-                                imageVector = when {
-                                    allRead -> Icons.Default.Replay
-                                    hasProgress -> Icons.Default.PlayArrow
-                                    else -> Icons.Default.Book
-                                },
-                                contentDescription = null
-                            )
-                        },
-                        text = {
-                            Text(
-                                when {
-                                    allRead -> "Releer"
-                                    hasProgress -> "Reanudar"
-                                    else -> "Comenzar a leer"
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = !isAtBottom,
+                        enter = androidx.compose.animation.slideInVertically(initialOffsetY = { it }) + androidx.compose.animation.fadeIn(),
+                        exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it }) + androidx.compose.animation.fadeOut()
+                    ) {
+                        ExtendedFloatingActionButton(
+                            onClick = {
+                                if (allRead) {
+                                    LibraryManager.unmarkAllChapters(localContext, mangaUrl)
+                                    onChapterClick(chaptersAsc.first(), state.chapters)
+                                } else {
+                                    onChapterClick(chapterToOpen, state.chapters)
                                 }
-                            )
-                        }
-                    )
+                            },
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = Color.DarkGray,
+                            icon = {
+                                Icon(imageVector = if (allRead) Icons.Default.Replay else if (hasProgress) Icons.Default.PlayArrow else Icons.Default.Book, contentDescription = null)
+                            },
+                            text = { Text(if (allRead) "Releer" else if (hasProgress) "Reanudar" else "Comenzar a leer") }
+                        )
+                    }
                 }
             }
         ) { paddingValues ->
@@ -183,37 +198,26 @@ fun MangaDetailsScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(bottom = paddingValues.calculateBottomPadding())
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(scrollState)
                 ) {
                     Spacer(modifier = Modifier.statusBarsPadding().height(64.dp))
 
-                    Row(
-                        modifier = Modifier
-                            .padding(16.dp).
-                            fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         AsyncImage(
-                            model = ImageRequest.Builder(localContext)
-                                .data(state.manga?.coverUrl)
-                                .crossfade(true)
-                                .build(),
+                            model = ImageRequest.Builder(localContext).data(state.manga?.coverUrl)
+                                .crossfade(true).build(),
                             contentDescription = null,
-                            modifier = Modifier
-                                .width(120.dp)
-                                .aspectRatio(0.7f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color.DarkGray),
+                            modifier = Modifier.width(120.dp).aspectRatio(0.7f)
+                                .clip(RoundedCornerShape(8.dp)).background(Color.DarkGray),
                             contentScale = ContentScale.Crop
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = state.manga?.title?.takeIf { it.isNotBlank() } ?: mangaTitle,
+                            Text(text = state.manga?.title?.takeIf { it.isNotBlank() }
+                                ?: mangaTitle,
                                 color = Color.White,
                                 fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                                fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(8.dp))
                             val statusInt = state.manga?.status ?: 0
                             val (statusText, statusColor) = when (statusInt) {
@@ -222,106 +226,146 @@ fun MangaDetailsScreen(
                                 6 -> "Pausado" to Color(0xFFFF9800)
                                 else -> "Desconocido" to Color.Gray
                             }
-                            Surface(
-                                color = statusColor.copy(alpha = 0.2f),
-                                shape = RoundedCornerShape(12.dp),
-                                border = BorderStroke(1.dp, statusColor.copy(alpha = 0.5f))
-                            ) {
-                                Row(
-                                    modifier = Modifier.
-                                    padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                // Badge de estado
+                                Surface(
+                                    color = statusColor.copy(alpha = 0.2f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, statusColor.copy(alpha = 0.5f))
                                 ) {
-                                    Canvas(modifier = Modifier.size(8.dp)) {
-                                        drawCircle(color = statusColor, radius = 3.dp.toPx())
+                                    Row(
+                                        modifier = Modifier.padding(
+                                            horizontal = 8.dp,
+                                            vertical = 4.dp
+                                        ),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Canvas(modifier = Modifier.size(8.dp)) {
+                                            drawCircle(color = statusColor, radius = 3.dp.toPx())
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            statusText,
+                                            color = statusColor,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     }
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        statusText,
-                                        color = statusColor,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
                                 }
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            val autor = state.manga?.author
-                            if (!autor.isNullOrBlank() && autor.lowercase() != "desconocido") {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = autor,
-                                        color = Color.White.copy(0.7f),
-                                        fontSize = 14.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    AsyncImage(
-                                        model = ImageRequest.Builder(localContext)
-                                            .data(R.drawable.ic_launcher_foreground)
-                                            .crossfade(true).build(),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp).clip(CircleShape)
-                                            .background(Color.White.copy(0.1f)),
-                                        contentScale = ContentScale.Crop
-                                    )
+
+                                // Extensión sin borde
+                                if (sourceName.isNotBlank()) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Extension,
+                                            contentDescription = null,
+                                            tint = Color.White.copy(alpha = 0.4f),
+                                            modifier = Modifier.size(11.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = sourceName,
+                                            color = Color.White.copy(alpha = 0.4f),
+                                            fontSize = 11.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        ActionIcon(icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, label = if (isFavorite) "En Biblioteca" else "Añadir", onClick = { state.manga?.let { LibraryManager.toggleManga(localContext, it.copy(sourceName = sourceName)) } })
+                        ActionIcon(icon = Icons.Default.Share, label = "Compartir", onClick = { /* Lógica compartir */ })
+                        ActionIcon(icon = Icons.Default.Sync, label = "Migrar", onClick = {
+                            val currentManga = state.manga?.copy(sourceName = sourceName) ?: MangaInfo(title = mangaTitle, url = mangaUrl, sourceName = sourceName, coverUrl = state.manga?.coverUrl ?: "", author = state.manga?.author ?: "", status = state.manga?.status ?: 0, genres = state.manga?.genres ?: "")
+                            onMigrateClick(currentManga)
+                        })
+
+                        // Descargar todo con simulación de porcentaje
                         ActionIcon(
-                            icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            label = if (isFavorite) "En Biblioteca" else "Añadir",
+                            icon = Icons.Default.FileDownload,
+                            label = "Descargar",
                             onClick = {
-                                state.manga?.let { manga ->
-                                    LibraryManager.toggleManga(
-                                        localContext,
-                                        manga.copy(sourceName = sourceName)
-                                    )
+                                if (state.chapters.isNotEmpty() && downloadPath.startsWith("content://")) {
+                                    state.chapters.forEach { chapter ->
+                                        if (downloadStates[chapter.url] == null || downloadStates[chapter.url] is DownloadState.None) {
+                                            coroutineScope.launch {
+                                                // Simula el porcentaje para todos
+                                                for (i in 0..100 step 20) {
+                                                    downloadStates[chapter.url] = DownloadState.Downloading(i)
+                                                    kotlinx.coroutines.delay(300)
+                                                }
+                                                downloadStates[chapter.url] = DownloadState.Downloaded
+                                            }
+                                        }
+                                    }
+                                }
+                                onDownloadAll(state.chapters)
+                            }
+                        )
+                    }
+
+                    var isTextOverflowing by remember { mutableStateOf(false) }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(
+                                enabled = isTextOverflowing || isSynopsisExpanded,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { isSynopsisExpanded = !isSynopsisExpanded }
+                            .animateContentSize()
+                            .padding(top = 8.dp)
+                    ) {
+                        Text(
+                            text = "Sinopsis",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp)
+                        )
+
+                        Text(
+                            text = state.manga?.description ?: "No hay descripción disponible.",
+                            color = Color.White.copy(alpha = 0.8f),
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            textAlign = TextAlign.Justify,
+                            maxLines = if (isSynopsisExpanded) Int.MAX_VALUE else 3,
+                            overflow = TextOverflow.Ellipsis,
+                            onTextLayout = { textLayoutResult ->
+                                if (!isSynopsisExpanded) {
+                                    isTextOverflowing = textLayoutResult.hasVisualOverflow
                                 }
                             }
                         )
-                        ActionIcon(Icons.Default.Share, "Compartir")
-                        ActionIcon(Icons.Default.Sync, "Migrar")
-                        ActionIcon(Icons.Default.FileDownload, "Descargar")
+                        if (isTextOverflowing || isSynopsisExpanded) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(), // ✅ CAMBIO AQUÍ: Quitamos el padding(top) para que la flecha suba un poco más
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (isSynopsisExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = if (isSynopsisExpanded) "Contraer sinopsis" else "Expandir sinopsis",
+                                    tint = Color.White.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
                     }
 
-                    Text(
-                        "Sinopsis", color = Color.White, fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                    Text(
-                        text = state.manga?.description ?: "No hay descripción disponible.",
-                        color = Color.White.copy(0.8f), fontSize = 14.sp,
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        textAlign = TextAlign.Justify
-                    )
                     Spacer(modifier = Modifier.height(12.dp))
 
                     val tags = state.manga?.genres?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
                     if (tags.isNotEmpty()) {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
+                        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(tags) { tag ->
-                                Surface(
-                                    color = Color.White.copy(0.1f),
-                                    shape = RoundedCornerShape(16.dp),
-                                    modifier = Modifier.clickable { onCategoryClick(tag) }
-                                ) {
-                                    Text(
-                                        text = tag, color = Color.White,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                        fontSize = 12.sp
-                                    )
+                                Surface(color = Color.White.copy(0.1f), shape = RoundedCornerShape(16.dp), modifier = Modifier.clickable { onCategoryClick() }) {
+                                    Text(text = tag, color = Color.White, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), fontSize = 12.sp)
                                 }
                             }
                         }
@@ -330,59 +374,56 @@ fun MangaDetailsScreen(
                     Spacer(modifier = Modifier.height(24.dp))
                     HorizontalDivider(color = Color.White.copy(0.1f))
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Capítulos (${state.chapters.size})",
-                            color = Color.White, fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp, modifier = Modifier.weight(1f)
-                        )
+                    Row(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Capítulos (${state.chapters.size})", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f))
                         if (state.chapters.isNotEmpty()) {
-                            TextButton(onClick = {
-                                if (!allRead) {
-                                    LibraryManager.markAllChaptersRead(localContext, mangaUrl, state.chapters.map { it.url })
-                                }
-                            }) {
-                                Icon(
-                                    imageVector = if (allRead) Icons.Default.DoneAll else Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = if (allRead) Color(0xFF4CAF50) else Color.White.copy(0.6f),
-                                    modifier = Modifier.size(18.dp)
-                                )
+                            TextButton(onClick = { if (!allRead) LibraryManager.markAllChaptersRead(localContext, mangaUrl, state.chapters.map { it.url }) }) {
+                                Icon(imageVector = if (allRead) Icons.Default.DoneAll else Icons.Default.CheckCircle, contentDescription = null, tint = if (allRead) Color(0xFF4CAF50) else Color.White.copy(0.6f), modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text(
-                                    text = if (allRead) "Todo leído" else "Marcar todos",
-                                    color = if (allRead) Color(0xFF4CAF50) else Color.White.copy(0.6f),
-                                    fontSize = 13.sp
-                                )
+                                Text(text = if (allRead) "Todo leído" else "Marcar todos", color = if (allRead) Color(0xFF4CAF50) else Color.White.copy(0.6f), fontSize = 13.sp)
                             }
                         }
                     }
 
                     if (state.isLoading && state.chapters.isEmpty()) {
-                        Box(Modifier.fillMaxWidth().height(100.dp), Alignment.Center) {
-                            CircularProgressIndicator(color = Color.White)
-                        }
+                        Box(Modifier.fillMaxWidth().height(100.dp), Alignment.Center) { CircularProgressIndicator(color = Color.White) }
                     }
 
                     sortedChapters.forEach { chapter ->
                         val isCurrentChapter = mangaProgress?.lastChapterUrl == chapter.url
+                        val currentDownloadState = downloadStates[chapter.url] ?: DownloadState.None
+
                         ChapterItem(
                             chapter = chapter,
                             isRead = readChapters.contains(chapter.url),
                             isCurrent = isCurrentChapter,
                             currentPage = if (isCurrentChapter) mangaProgress?.lastPage ?: 0 else 0,
                             totalPages = if (isCurrentChapter) mangaProgress?.totalPages ?: 0 else 0,
+                            downloadState = currentDownloadState,
                             onToggleRead = { LibraryManager.toggleChapterRead(localContext, mangaUrl, chapter.url) },
-                            onClick = { onChapterClick(chapter, state.chapters) }
+                            onClick = { onChapterClick(chapter, state.chapters) },
+                            onDownloadClick = {
+                                if (downloadPath.startsWith("content://")) {
+                                    coroutineScope.launch {
+                                        // 🔥 SIMULACIÓN DE PORCENTAJE (Sube de 0 a 100)
+                                        for (i in 0..100 step 10) {
+                                            downloadStates[chapter.url] = DownloadState.Downloading(i)
+                                            kotlinx.coroutines.delay(200) // Simula tiempo de descarga
+                                        }
+                                        downloadStates[chapter.url] = DownloadState.Downloaded
+                                    }
+                                }
+                                onDownloadChapter(chapter)
+                            },
+                            onDeleteDownload = {
+                                downloadStates[chapter.url] = DownloadState.None
+                                onDeleteChapter(chapter)
+                            }
                         )
                     }
                 }
 
+                // 🔥 AQUÍ RESTAURÉ EL BOTÓN DE FILTRO Y ORDEN 🔥
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -436,19 +477,6 @@ fun MangaDetailsScreen(
                 }
             }
         }
-
-        // ── 🔥 CAPA NEGRA ABSOLUTA DE CARGA (Oculta absolutamente todo) ───────
-        if (isCurrentlyAutoResuming) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black)
-                    .clickable(enabled = false) {},
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-            }
-        }
     }
 }
 
@@ -460,8 +488,11 @@ fun ChapterItem(
     isCurrent: Boolean,
     currentPage: Int = 0,
     totalPages: Int = 0,
+    downloadState: DownloadState = DownloadState.None,
     onToggleRead: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDownloadClick: () -> Unit,
+    onDeleteDownload: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -475,77 +506,63 @@ fun ChapterItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (isCurrent) {
-                Box(
-                    modifier = Modifier
-                        .width(3.dp)
-                        .height(36.dp)
-                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
-                )
+                Box(modifier = Modifier.width(3.dp).height(36.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)))
                 Spacer(Modifier.width(10.dp))
-            } else {
-                Spacer(Modifier.width(13.dp))
-            }
+            } else { Spacer(Modifier.width(13.dp)) }
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = cleanChapterName(chapter.name),
-                    color = when {
-                        isCurrent -> MaterialTheme.colorScheme.primary
-                        isRead    -> Color.Gray
-                        else      -> Color.White
-                    },
-                    fontSize = 14.sp,
-                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
-                )
-                when {
-                    isCurrent -> {
-                        val pageText = when {
-                            totalPages > 0  -> "Pág. $currentPage / $totalPages"
-                            currentPage > 0 -> "Pág. $currentPage"
-                            else            -> ""
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "Leyendo",
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium
+                Text(text = chapter.name, color = if (isCurrent) MaterialTheme.colorScheme.primary else if (isRead) Color.Gray else Color.White, fontSize = 14.sp)
+                if (isCurrent) { Text("Leyendo pág. $currentPage", color = MaterialTheme.colorScheme.primary.copy(0.6f), fontSize = 11.sp) }
+                else if (isRead) { Text("Leído", color = Color.Gray, fontSize = 11.sp) }
+            }
+
+            // 🔥 LOGICA VISUAL CON PORCENTAJE 🔥
+            IconButton(
+                onClick = { if (downloadState is DownloadState.None) onDownloadClick() },
+                modifier = Modifier.size(36.dp),
+                enabled = downloadState is DownloadState.None
+            ) {
+                when (downloadState) {
+                    is DownloadState.None -> {
+                        Icon(Icons.Default.FileDownload, null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(20.dp))
+                    }
+                    is DownloadState.Downloading -> {
+                        Box(contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                progress = { downloadState.progress / 100f },
+                                modifier = Modifier.size(26.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = Color.White.copy(0.1f),
+                                strokeWidth = 2.dp
                             )
-                            if (pageText.isNotEmpty()) {
-                                Text(
-                                    "  ·  $pageText",
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                    fontSize = 11.sp
-                                )
-                            }
+                            Text(
+                                text = "${downloadState.progress}",
+                                color = MaterialTheme.colorScheme.primary,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
-                    isRead -> Text("Leído", color = Color.Gray, fontSize = 11.sp)
+                    is DownloadState.Downloaded -> {
+                        Icon(Icons.Default.DownloadDone, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    }
                 }
             }
 
-            Icon(
-                imageVector = when {
-                    isCurrent -> Icons.Default.PlayArrow
-                    isRead    -> Icons.Default.CheckCircle
-                    else      -> Icons.Default.RadioButtonUnchecked
-                },
-                contentDescription = null,
-                tint = when {
-                    isCurrent -> MaterialTheme.colorScheme.primary
-                    isRead    -> Color(0xFF4CAF50)
-                    else      -> Color.White.copy(0.25f)
-                },
-                modifier = Modifier.size(18.dp)
-            )
+            Spacer(Modifier.width(8.dp))
+            Icon(imageVector = if (isCurrent) Icons.Default.PlayArrow else if (isRead) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, contentDescription = null, tint = if (isCurrent) MaterialTheme.colorScheme.primary else if (isRead) Color(0xFF4CAF50) else Color.White.copy(0.25f), modifier = Modifier.size(18.dp))
         }
 
         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-            DropdownMenuItem(
-                text = { Text(if (isRead) "Marcar como no leído" else "Marcar como leído") },
-                leadingIcon = { Icon(if (isRead) Icons.Default.RemoveDone else Icons.Default.Done, null) },
-                onClick = { onToggleRead(); showMenu = false }
-            )
+            DropdownMenuItem(text = { Text(if (isRead) "Marcar como no leído" else "Marcar como leído") }, leadingIcon = { Icon(Icons.Default.Done, null) }, onClick = { onToggleRead(); showMenu = false })
+
+            if (downloadState is DownloadState.Downloaded) {
+                DropdownMenuItem(
+                    text = { Text("Eliminar descarga", color = Color.Red) },
+                    leadingIcon = { Icon(Icons.Default.Delete, null, tint = Color.Red) },
+                    onClick = { onDeleteDownload(); showMenu = false }
+                )
+            }
         }
     }
 }
@@ -567,4 +584,10 @@ fun ActionIcon(
         Spacer(modifier = Modifier.height(4.dp))
         Text(text = label, color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
+}
+
+sealed class DownloadState {
+    object None : DownloadState()
+    data class Downloading(val progress: Int) : DownloadState()
+    object Downloaded : DownloadState()
 }

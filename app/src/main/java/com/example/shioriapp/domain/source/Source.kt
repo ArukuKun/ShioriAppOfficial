@@ -10,6 +10,8 @@ interface Source {
     val id: Long
 
     suspend fun fetchSearchManga(query: String, page: Int): List<MangaInfo>
+    suspend fun fetchPopularManga(page: Int): List<MangaInfo>
+    suspend fun fetchLatestUpdates(page: Int): List<MangaInfo>
     suspend fun fetchMangaDetails(manga: MangaInfo): MangaInfo
     suspend fun fetchChapterList(manga: MangaInfo): List<ChapterInfo>
     suspend fun fetchPageList(chapter: ChapterInfo): List<PageInfo>
