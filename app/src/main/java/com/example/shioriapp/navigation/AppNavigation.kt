@@ -95,13 +95,13 @@ fun AppNavigation() {
                 navArgument("resume") { type = NavType.BoolType; defaultValue = false }
             )
         ) { backStackEntry ->
-            val sourceName = URLDecoder.decode(backStackEntry.arguments?.getString("sourceName") ?: "", "UTF-8")
             val encodedUrl = backStackEntry.arguments?.getString("mangaUrl") ?: ""
             val encodedTitle = backStackEntry.arguments?.getString("mangaTitle") ?: ""
             val resume = backStackEntry.arguments?.getBoolean("resume") ?: false
 
-            val mangaUrl = URLDecoder.decode(encodedUrl, "UTF-8")
-            val mangaTitle = URLDecoder.decode(encodedTitle, "UTF-8")
+            val sourceName = safeUrlDecode(backStackEntry.arguments?.getString("sourceName") ?: "")
+            val mangaUrl = safeUrlDecode(encodedUrl)
+            val mangaTitle = safeUrlDecode(encodedTitle)
 
             var showFolderPickerDialog by remember { mutableStateOf(false) }
             val scope = rememberCoroutineScope()
@@ -462,5 +462,16 @@ fun NotificationDropdown(expanded: Boolean, onDismiss: () -> Unit) {
             Spacer(modifier = Modifier.height(12.dp))
             Text("No tienes ninguna notificación.", fontSize = 14.sp, textAlign = TextAlign.Center)
         }
+    }
+
+}
+
+private fun safeUrlDecode(encoded: String): String {
+    return try {
+        URLDecoder.decode(encoded, "UTF-8")
+    } catch (e: Exception) {
+        // Si falla el decode, devolvemos el string tal cual sin crashear
+        android.util.Log.w("SHIORI_NAV", "URLDecode falló para: $encoded — usando raw")
+        encoded
     }
 }

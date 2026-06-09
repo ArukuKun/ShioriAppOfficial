@@ -84,7 +84,6 @@ class MangaDetailViewModel : ViewModel() {
                 Log.e("SHIORI_APP", "Error leyendo el caché rápido: ${e.message}")
             }
 
-            // ── 2. ACTUALIZACIÓN SILENCIOSA EN LA RED (INTERNET) ────────────────
             try {
                 val source = ExtensionLoader.getSource(decodedSource)
                 if (source == null) {
@@ -103,8 +102,6 @@ class MangaDetailViewModel : ViewModel() {
 
                 val chapterList = source.fetchChapterList(mangaFinal)
 
-                // ── 3. GUARDAR EL NUEVO RESULTADO EN CACHÉ ──────────────────────
-                // Escribir archivo del Manga
                 val mObj = JSONObject().apply {
                     put("title", mangaFinal.title)
                     put("url", mangaFinal.url)

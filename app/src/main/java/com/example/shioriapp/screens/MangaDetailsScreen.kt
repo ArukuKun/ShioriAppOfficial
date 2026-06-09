@@ -4,12 +4,14 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -71,6 +73,9 @@ fun MangaDetailsScreen(
 
     val sortDescending by LibraryManager.isChapterSortDescending.collectAsState()
     var showSortMenu by remember { mutableStateOf(false) }
+
+    // 🔥 Variable de estado para controlar la sinopsis
+    var isSynopsisExpanded by remember { mutableStateOf(false) }
 
     // 🔥 Estado mejorado para el porcentaje de descarga
     val downloadStates = remember { mutableStateMapOf<String, DownloadState>() }
@@ -199,14 +204,20 @@ fun MangaDetailsScreen(
 
                     Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         AsyncImage(
-                            model = ImageRequest.Builder(localContext).data(state.manga?.coverUrl).crossfade(true).build(),
+                            model = ImageRequest.Builder(localContext).data(state.manga?.coverUrl)
+                                .crossfade(true).build(),
                             contentDescription = null,
-                            modifier = Modifier.width(120.dp).aspectRatio(0.7f).clip(RoundedCornerShape(8.dp)).background(Color.DarkGray),
+                            modifier = Modifier.width(120.dp).aspectRatio(0.7f)
+                                .clip(RoundedCornerShape(8.dp)).background(Color.DarkGray),
                             contentScale = ContentScale.Crop
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(text = state.manga?.title?.takeIf { it.isNotBlank() } ?: mangaTitle, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            Text(text = state.manga?.title?.takeIf { it.isNotBlank() }
+                                ?: mangaTitle,
+                                color = Color.White,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(8.dp))
                             val statusInt = state.manga?.status ?: 0
                             val (statusText, statusColor) = when (statusInt) {
@@ -215,11 +226,51 @@ fun MangaDetailsScreen(
                                 6 -> "Pausado" to Color(0xFFFF9800)
                                 else -> "Desconocido" to Color.Gray
                             }
-                            Surface(color = statusColor.copy(alpha = 0.2f), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, statusColor.copy(alpha = 0.5f))) {
-                                Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Canvas(modifier = Modifier.size(8.dp)) { drawCircle(color = statusColor, radius = 3.dp.toPx()) }
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(statusText, color = statusColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                // Badge de estado
+                                Surface(
+                                    color = statusColor.copy(alpha = 0.2f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, statusColor.copy(alpha = 0.5f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(
+                                            horizontal = 8.dp,
+                                            vertical = 4.dp
+                                        ),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Canvas(modifier = Modifier.size(8.dp)) {
+                                            drawCircle(color = statusColor, radius = 3.dp.toPx())
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            statusText,
+                                            color = statusColor,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
+                                // Extensión sin borde
+                                if (sourceName.isNotBlank()) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Extension,
+                                            contentDescription = null,
+                                            tint = Color.White.copy(alpha = 0.4f),
+                                            modifier = Modifier.size(11.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = sourceName,
+                                            color = Color.White.copy(alpha = 0.4f),
+                                            fontSize = 11.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -257,8 +308,55 @@ fun MangaDetailsScreen(
                         )
                     }
 
-                    Text("Sinopsis", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-                    Text(text = state.manga?.description ?: "No hay descripción disponible.", color = Color.White.copy(0.8f), fontSize = 14.sp, modifier = Modifier.padding(horizontal = 16.dp), textAlign = TextAlign.Justify)
+                    var isTextOverflowing by remember { mutableStateOf(false) }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(
+                                enabled = isTextOverflowing || isSynopsisExpanded,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { isSynopsisExpanded = !isSynopsisExpanded }
+                            .animateContentSize()
+                            .padding(top = 8.dp)
+                    ) {
+                        Text(
+                            text = "Sinopsis",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp)
+                        )
+
+                        Text(
+                            text = state.manga?.description ?: "No hay descripción disponible.",
+                            color = Color.White.copy(alpha = 0.8f),
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            textAlign = TextAlign.Justify,
+                            maxLines = if (isSynopsisExpanded) Int.MAX_VALUE else 3,
+                            overflow = TextOverflow.Ellipsis,
+                            onTextLayout = { textLayoutResult ->
+                                if (!isSynopsisExpanded) {
+                                    isTextOverflowing = textLayoutResult.hasVisualOverflow
+                                }
+                            }
+                        )
+                        if (isTextOverflowing || isSynopsisExpanded) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(), // ✅ CAMBIO AQUÍ: Quitamos el padding(top) para que la flecha suba un poco más
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (isSynopsisExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = if (isSynopsisExpanded) "Contraer sinopsis" else "Expandir sinopsis",
+                                    tint = Color.White.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -488,7 +586,6 @@ fun ActionIcon(
     }
 }
 
-// 🔥 SE UTILIZA UN SEALED CLASS PARA GUARDAR EL PORCENTAJE 🔥
 sealed class DownloadState {
     object None : DownloadState()
     data class Downloading(val progress: Int) : DownloadState()
