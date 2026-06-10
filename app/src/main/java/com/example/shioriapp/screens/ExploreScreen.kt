@@ -72,7 +72,7 @@ fun ExploreScreen(
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 8.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 100.dp, top = 100.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -105,7 +105,9 @@ fun ExploreScreen(
                                     )
                             )
                             Column(
-                                modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp, vertical = 24.dp),
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(horizontal = 16.dp, vertical = 24.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
@@ -197,8 +199,6 @@ fun ExploreScreen(
                         onSourceClick = { sourceName -> viewModel.openExtensionCatalog(sourceName) }
                     )
                 } else {
-                    // 🔥 REVOLUCIÓN DE NAVEGACIÓN: Quitamos el toggleSourcesView(false)
-                    // Así el popup se queda vivo al irse a detalles y sigue esperándote al volver.
                     ExtensionCatalogView(
                         sourceName = state.selectedExtension!!,
                         mangas = state.extensionMangas,

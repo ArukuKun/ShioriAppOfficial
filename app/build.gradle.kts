@@ -6,18 +6,17 @@ plugins {
 
 android {
     namespace = "com.example.shioriapp"
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.example.shioriapp"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+
+        manifestPlaceholders["redirectSchemeName"] = "shiori"
+        manifestPlaceholders["redirectHostName"] = "auth"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -69,6 +68,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json-okio:1.6.3")
     implementation("io.coil-kt:coil-compose:2.6.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-rx2:1.7.3")
+    implementation("com.spotify.android:auth:2.1.0")
+    implementation("dev.chrisbanes.haze:haze:0.6.2")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

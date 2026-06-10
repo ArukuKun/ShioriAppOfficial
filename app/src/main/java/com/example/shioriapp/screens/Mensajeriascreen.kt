@@ -2,8 +2,10 @@ package com.example.shioriapp.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Lock
@@ -28,10 +30,16 @@ fun MensajeriaScreen() {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp),
-            modifier = Modifier.padding(horizontal = 40.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    top = 100.dp,
+                    bottom = 100.dp,
+                    start = 40.dp,
+                    end = 40.dp
+                )
         ) {
-
-            // --- ÍCONO CENTRAL ---
             Box(
                 modifier = Modifier
                     .size(110.dp)
@@ -49,7 +57,6 @@ fun MensajeriaScreen() {
                 )
             }
 
-            // --- TÍTULO ---
             Text(
                 text = "Mensajería",
                 fontSize = 32.sp,
@@ -57,7 +64,6 @@ fun MensajeriaScreen() {
                 color = MaterialTheme.colorScheme.onBackground
             )
 
-            // --- DESCRIPCIÓN ---
             Text(
                 text = "Conéctate con otros lectores y comparte tus series favoritas.",
                 fontSize = 15.sp,
@@ -68,7 +74,6 @@ fun MensajeriaScreen() {
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // --- BADGE "REQUIERE CUENTA" ---
             Surface(
                 color = MaterialTheme.colorScheme.tertiaryContainer,
                 shape = RoundedCornerShape(20.dp)
@@ -93,7 +98,6 @@ fun MensajeriaScreen() {
                 }
             }
 
-            // --- FEATURES PREVIEW ---
             Column(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier

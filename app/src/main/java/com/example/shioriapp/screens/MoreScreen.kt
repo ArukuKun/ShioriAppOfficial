@@ -33,7 +33,7 @@ fun MoreScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding() // 🔥 EL ARREGLO ESTÁ AQUÍ: Evita que el logo choque con la hora/batería
+            .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
     ) {
@@ -42,19 +42,19 @@ fun MoreScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 40.dp),
+                .padding(vertical = 0.dp),
             contentAlignment = Alignment.Center
         ) {
             val logoResource = if (isDarkMode) {
-                R.drawable.ic_shiori_white
-            } else {
                 R.drawable.ic_shiori_black
+            } else {
+                R.drawable.ic_shiori_white
             }
 
             Image(
                 painter = painterResource(id = logoResource),
                 contentDescription = "Logo de ShioriApp",
-                modifier = Modifier.size(160.dp)
+                modifier = Modifier.size(200.dp)
             )
         }
 
