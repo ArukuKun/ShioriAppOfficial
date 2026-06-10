@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     id("org.jetbrains.kotlin.plugin.serialization") version "1.9.0"
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -77,4 +78,15 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    implementation("com.google.firebase:firebase-auth-ktx:22.3.1")
+    implementation("com.google.firebase:firebase-firestore-ktx:24.10.1")
+    implementation("com.google.firebase:firebase-storage-ktx:20.3.0")
+    implementation("com.google.firebase:firebase-messaging-ktx:23.4.0")
+    implementation("com.google.android.gms:play-services-auth:20.7.0")
+    // Para llamadas HTTP a Discord
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    // Para manejo de imágenes en chat
+    implementation("io.coil-kt:coil-compose:2.6.0")
 }
