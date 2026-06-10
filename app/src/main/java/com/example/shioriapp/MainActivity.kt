@@ -18,8 +18,19 @@ import com.example.shioriapp.navigation.AppNavigation
 import com.example.shioriapp.ui.theme.ShioriAppTheme
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        var authCode: String? = null
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Manejar el Intent si viene de un deep link (Discord)
+        intent?.data?.let { uri ->
+            if (uri.scheme == "shioriapp") {
+                authCode = uri.getQueryParameter("code")
+            }
+        }
 
         ExtensionLoader.loadAllExtensions(this)
 

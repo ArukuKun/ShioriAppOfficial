@@ -182,4 +182,8 @@ class AuthViewModel(private val context: Context) : ViewModel() {
         authManager.signOut()
         _authState.value = AuthState.Unauthenticated
     }
+
+    fun setErrorMessage(message: String?) {
+        _errorMessage.value = message
+    }
 }
