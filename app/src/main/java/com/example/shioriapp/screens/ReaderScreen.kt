@@ -37,6 +37,7 @@ import com.example.shioriapp.data.repository.LibraryManager
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.alpha
 
+
 @Composable
 fun ReaderScreen(
     sourceName: String,
