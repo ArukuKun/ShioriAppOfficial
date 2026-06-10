@@ -1,4 +1,4 @@
-package com.example.shioriapp
+    package com.example.shioriapp
 
 import android.os.Bundle
 import android.webkit.CookieManager
@@ -20,11 +20,8 @@ import com.example.shioriapp.ui.theme.ShioriAppTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         ExtensionLoader.loadAllExtensions(this)
-
         enableEdgeToEdge()
-
         val imageLoader = ImageLoader.Builder(this)
             .okHttpClient {
                 OkHttpClient.Builder()
@@ -37,7 +34,6 @@ class MainActivity : ComponentActivity() {
                             .header("User-Agent", userAgent)
                             .header("Cookie", cookies)
                             .build()
-
                         chain.proceed(request)
                     }
                     .build()
