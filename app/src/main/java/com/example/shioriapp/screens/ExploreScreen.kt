@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,7 +73,7 @@ fun ExploreScreen(
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 100.dp, top = 100.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 100.dp, top = 96.dp), // Ajustado para TopAppBar
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -99,7 +100,12 @@ fun ExploreScreen(
                                     .fillMaxSize()
                                     .background(
                                         Brush.verticalGradient(
-                                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.3f), backgroundColor.copy(alpha = 0.9f), backgroundColor),
+                                            colors = listOf(
+                                                Color.Transparent, 
+                                                Color.Black.copy(alpha = 0.3f), 
+                                                backgroundColor.copy(alpha = 0.8f), 
+                                                backgroundColor
+                                            ),
                                             startY = 400f
                                         )
                                     )
@@ -136,9 +142,22 @@ fun ExploreScreen(
                         items(state.categories) { category ->
                             val isSelected = state.selectedCategory == category
                             FilterChip(
-                                selected = isSelected, onClick = { viewModel.setCategory(category) },
+                                selected = isSelected,
+                                onClick = { viewModel.setCategory(category) },
                                 label = { Text(category, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                                shape = RoundedCornerShape(16.dp)
+                                shape = RoundedCornerShape(16.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    containerColor = Color.White.copy(alpha = 0.1f),
+                                    selectedContainerColor = Color.White,
+                                    labelColor = Color.White.copy(alpha = 0.7f),
+                                    selectedLabelColor = Color.Black
+                                ),
+                                border = FilterChipDefaults.filterChipBorder(
+                                    borderColor = Color.Transparent,
+                                    selectedBorderColor = Color.Transparent,
+                                    enabled = true,
+                                    selected = isSelected
+                                )
                             )
                         }
                     }
@@ -184,8 +203,9 @@ fun ExploreScreen(
                     viewModel.closeExtensionCatalog()
                 },
                 sheetState = sheetState,
-                containerColor = MaterialTheme.colorScheme.background,
-                dragHandle = { BottomSheetDefaults.DragHandle() }
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                dragHandle = { BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)) }
             ) {
                 if (state.selectedExtension == null) {
                     Text(
@@ -264,7 +284,13 @@ fun ExtensionCatalogView(
         TabRow(
             selectedTabIndex = selectedTab,
             containerColor = Color.Transparent,
-            contentColor = MaterialTheme.colorScheme.primary,
+            contentColor = Color.White,
+            indicator = { tabPositions ->
+                TabRowDefaults.SecondaryIndicator(
+                    Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                    color = Color.White
+                )
+            },
             modifier = Modifier.padding(horizontal = 8.dp)
         ) {
             val tabs = listOf("Populares", "Recientes", "Todo")

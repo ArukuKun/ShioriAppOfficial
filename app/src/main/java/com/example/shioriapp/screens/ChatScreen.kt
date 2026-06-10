@@ -3,13 +3,13 @@ package com.example.shioriapp.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -32,6 +32,8 @@ import kotlinx.coroutines.launch
 fun ChatScreen(
     chatId: String,
     currentUserId: String,
+    friendName: String,
+    onBackClick: () -> Unit
 ) {
     val viewModel: ChatViewModel = viewModel(key = chatId) { ChatViewModel(chatId, currentUserId) }
     val messages by viewModel.messages.collectAsState()
@@ -52,22 +54,22 @@ fun ChatScreen(
     ) { uri: Uri? ->
         uri?.let { viewModel.sendImage(it) }
     }
-
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(friendName) },
                 navigationIcon = {
-                        Icon(Icons.Default.ArrowBack, null)
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
                     }
                 }
             )
         }
-    ) { padding ->
+    ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(paddingValues)
         ) {
             LazyColumn(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -103,7 +105,7 @@ fun ChatScreen(
                     },
                     enabled = !isSending
                 ) {
-                    Icon(Icons.Default.Send, null)
+                    Icon(Icons.AutoMirrored.Filled.Send, null)
                 }
             }
         }

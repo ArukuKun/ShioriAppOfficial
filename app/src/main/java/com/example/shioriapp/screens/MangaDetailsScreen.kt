@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import com.example.shioriapp.ui.theme.NeutralGris
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -182,8 +183,8 @@ fun MangaDetailsScreen(
                                     onChapterClick(chapterToOpen, state.chapters)
                                 }
                             },
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = Color.DarkGray,
+                            containerColor = Color.White,
+                            contentColor = Color.Black,
                             icon = {
                                 Icon(imageVector = if (allRead) Icons.Default.Replay else if (hasProgress) Icons.Default.PlayArrow else Icons.Default.Book, contentDescription = null)
                             },
@@ -215,23 +216,23 @@ fun MangaDetailsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(text = state.manga?.title?.takeIf { it.isNotBlank() }
                                 ?: mangaTitle,
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(8.dp))
                             val statusInt = state.manga?.status ?: 0
                             val (statusText, statusColor) = when (statusInt) {
                                 1 -> "En curso" to Color(0xFF4CAF50)
-                                2, 4 -> "Completado" to Color(0xFFF44336)
+                                2, 4 -> "Completado" to Color(0xFFE91E63)
                                 6 -> "Pausado" to Color(0xFFFF9800)
-                                else -> "Desconocido" to Color.Gray
+                                else -> "Desconocido" to NeutralGris
                             }
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 // Badge de estado
                                 Surface(
-                                    color = statusColor.copy(alpha = 0.2f),
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
                                     shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, statusColor.copy(alpha = 0.5f))
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(
@@ -246,7 +247,7 @@ fun MangaDetailsScreen(
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             statusText,
-                                            color = statusColor,
+                                            color = MaterialTheme.colorScheme.onSurface,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold
                                         )
@@ -259,13 +260,13 @@ fun MangaDetailsScreen(
                                         Icon(
                                             imageVector = Icons.Default.Extension,
                                             contentDescription = null,
-                                            tint = Color.White.copy(alpha = 0.4f),
+                                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                                             modifier = Modifier.size(11.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
                                             text = sourceName,
-                                            color = Color.White.copy(alpha = 0.4f),
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                                             fontSize = 11.sp,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
@@ -442,9 +443,9 @@ fun MangaDetailsScreen(
                     Box {
                         IconButton(
                             onClick = { showSortMenu = true },
-                            modifier = Modifier.background(Color.Black.copy(0.4f), RoundedCornerShape(50))
+                            modifier = Modifier.background(MaterialTheme.colorScheme.surface.copy(0.4f), RoundedCornerShape(50))
                         ) {
-                            Icon(Icons.Default.FilterList, "Ordenar", tint = Color.White)
+                            Icon(Icons.Default.FilterList, "Ordenar", tint = MaterialTheme.colorScheme.onSurface)
                         }
                         DropdownMenu(
                             expanded = showSortMenu,
@@ -511,9 +512,13 @@ fun ChapterItem(
             } else { Spacer(Modifier.width(13.dp)) }
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = chapter.name, color = if (isCurrent) MaterialTheme.colorScheme.primary else if (isRead) Color.Gray else Color.White, fontSize = 14.sp)
-                if (isCurrent) { Text("Leyendo pág. $currentPage", color = MaterialTheme.colorScheme.primary.copy(0.6f), fontSize = 11.sp) }
-                else if (isRead) { Text("Leído", color = Color.Gray, fontSize = 11.sp) }
+                Text(
+                    text = chapter.name,
+                    color = if (isCurrent) MaterialTheme.colorScheme.primary else if (isRead) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f) else MaterialTheme.colorScheme.onSurface,
+                    fontSize = 14.sp
+                )
+                if (isCurrent) { Text("Leyendo pág. $currentPage", color = MaterialTheme.colorScheme.primary.copy(0.7f), fontSize = 11.sp) }
+                else if (isRead) { Text("Leído", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f), fontSize = 11.sp) }
             }
 
             // 🔥 LOGICA VISUAL CON PORCENTAJE 🔥
@@ -524,7 +529,7 @@ fun ChapterItem(
             ) {
                 when (downloadState) {
                     is DownloadState.None -> {
-                        Icon(Icons.Default.FileDownload, null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.FileDownload, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f), modifier = Modifier.size(20.dp))
                     }
                     is DownloadState.Downloading -> {
                         Box(contentAlignment = Alignment.Center) {
@@ -532,12 +537,12 @@ fun ChapterItem(
                                 progress = { downloadState.progress / 100f },
                                 modifier = Modifier.size(26.dp),
                                 color = MaterialTheme.colorScheme.primary,
-                                trackColor = Color.White.copy(0.1f),
+                                trackColor = MaterialTheme.colorScheme.onSurface.copy(0.1f),
                                 strokeWidth = 2.dp
                             )
                             Text(
                                 text = "${downloadState.progress}",
-                                color = MaterialTheme.colorScheme.primary,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -550,7 +555,7 @@ fun ChapterItem(
             }
 
             Spacer(Modifier.width(8.dp))
-            Icon(imageVector = if (isCurrent) Icons.Default.PlayArrow else if (isRead) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, contentDescription = null, tint = if (isCurrent) MaterialTheme.colorScheme.primary else if (isRead) Color(0xFF4CAF50) else Color.White.copy(0.25f), modifier = Modifier.size(18.dp))
+            Icon(imageVector = if (isCurrent) Icons.Default.PlayArrow else if (isRead) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, contentDescription = null, tint = if (isCurrent) Color.White else if (isRead) Color(0xFF4CAF50) else Color.White.copy(0.25f), modifier = Modifier.size(18.dp))
         }
 
         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
@@ -580,9 +585,9 @@ fun ActionIcon(
             .clickable { onClick() }
             .padding(8.dp)
     ) {
-        Icon(imageVector = icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(24.dp))
+        Icon(imageVector = icon, contentDescription = label, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp))
         Spacer(modifier = Modifier.height(4.dp))
-        Text(text = label, color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Text(text = label, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }
 

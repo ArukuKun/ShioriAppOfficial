@@ -88,7 +88,7 @@ fun HomeScreen(
         contentPadding = PaddingValues(
             start = 16.dp,
             end = 16.dp,
-            top = 100.dp,
+            top = 96.dp,
             bottom = 100.dp
         ),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -119,7 +119,7 @@ fun HomeScreen(
             }
             // Divisor estético
             item(span = { GridItemSpan(maxLineSpan) }) {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color.Gray.copy(alpha = 0.2f))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
 

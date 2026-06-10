@@ -45,8 +45,10 @@ import com.example.shioriapp.R
 import com.example.shioriapp.data.repository.LibraryManager
 import com.example.shioriapp.domain.model.ChapterInfo
 import com.example.shioriapp.domain.model.MangaInfo
+import com.example.shioriapp.viewmodel.AuthViewModel
 import com.example.shioriapp.screens.*
 import com.example.shioriapp.viewmodel.ExploreViewModel
+import androidx.compose.runtime.collectAsState
 import org.json.JSONArray
 import java.io.File
 import java.net.URLDecoder
@@ -82,19 +84,44 @@ object MigrationCache {
 fun AppNavigation() {
     val rootNavController = rememberNavController()
     val context = LocalContext.current
+    val authViewModel: AuthViewModel = viewModel(factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+        override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+            return AuthViewModel(context.applicationContext) as T
+        }
+    })
+    val authState by authViewModel.authState.collectAsState()
 
     NavHost(
         navController = rootNavController,
-        startDestination = Routes.MAIN_TABS,
-        modifier = Modifier
-            .fillMaxSize(),
+        startDestination = "auth_wrapper",
+        modifier = Modifier.fillMaxSize(),
         enterTransition = { slideInHorizontally(tween(300)) { it } + fadeIn(tween(300)) },
         exitTransition = { fadeOut(tween(300)) },
         popEnterTransition = { fadeIn(tween(300)) },
         popExitTransition = { slideOutHorizontally(tween(300)) { it } + fadeOut(tween(300)) }
     ) {
-        composable(Routes.MAIN_TABS) {
-            MainTabsScreen(rootNavController)
+        composable("auth_wrapper") {
+            when (val state = authState) {
+                is AuthViewModel.AuthState.Authenticated -> {
+                    MainTabsScreen(rootNavController, state.userId, authViewModel)
+                }
+                is AuthViewModel.AuthState.Guest -> {
+                    MainTabsScreen(rootNavController, "guest_user", authViewModel)
+                }
+                is AuthViewModel.AuthState.Loading -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+                else -> {
+                    LoginScreen(
+                        authViewModel = authViewModel,
+                        onLoginSuccess = {
+                            // El StateFlow se encargará de recomponer
+                        }
+                    )
+                }
+            }
         }
 
         composable(
@@ -278,62 +305,61 @@ fun MainTopAppBar(
     isCollapsed: Boolean,
     onSearchClick: () -> Unit,
     onNotificationsClick: () -> Unit,
+    onAddFriendClick: () -> Unit = {},
+    showAddFriend: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val isDarkTheme = isSystemInDarkTheme()
-    val iconTint = if (isCollapsed) Color.White else if (isDarkTheme) Color.White else Color.Black
-    CenterAlignedTopAppBar(
+    
+    TopAppBar(
         modifier = modifier,
         title = {
-            AnimatedVisibility(
-                visible = !isCollapsed,
-                enter = fadeIn(tween(200)),
-                exit = fadeOut(tween(200))
-            ) {
-                when (currentRoute) {
-                    Routes.HOME -> {
-                        val logoRes = if (isSystemInDarkTheme()) R.drawable.ic_shiori_black else R.drawable.ic_shiori_white
-                        Image(painter = painterResource(id = logoRes), contentDescription = null, modifier = Modifier.height(40.dp))
-                    }
-                    Routes.EXPLORE -> Text("Explorar", fontWeight = FontWeight.Bold, color = iconTint)
-                    Routes.MENSAJERIA -> Text("Mensajería", fontWeight = FontWeight.Bold, color = iconTint)
-                    else -> Text("ShioriApp")
+            when (currentRoute) {
+                Routes.HOME -> {
+                    val logoRes = if (isDarkTheme) R.drawable.ic_shiori_white else R.drawable.ic_shiori_black
+                    Image(
+                        painter = painterResource(id = logoRes), 
+                        contentDescription = null, 
+                        modifier = Modifier.height(28.dp)
+                    )
                 }
+                Routes.EXPLORE -> Text("Explorar", fontWeight = FontWeight.Bold)
+                Routes.MENSAJERIA -> Text(if (showAddFriend) "Buscar Amigos" else "Mensajería", fontWeight = FontWeight.Bold)
+                else -> Text("Shiori", fontWeight = FontWeight.Bold)
             }
         },
         actions = {
-            Row(
-                modifier = Modifier
-                    .padding(end = 12.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(
-                        if (isCollapsed) Color.Black.copy(alpha = 0.55f) else Color.Transparent
+            if (currentRoute == Routes.MENSAJERIA) {
+                IconButton(onClick = onAddFriendClick) {
+                    Icon(
+                        imageVector = if (showAddFriend) Icons.Default.Close else Icons.Default.PersonAdd, 
+                        contentDescription = "Amigos"
                     )
-                    .padding(horizontal = if (isCollapsed) 4.dp else 0.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onSearchClick, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Default.Search, "Buscar", tint = iconTint)
-                }
-                IconButton(onClick = onNotificationsClick, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Default.Notifications, "Notificaciones", tint = iconTint)
                 }
             }
+            IconButton(onClick = onSearchClick) {
+                Icon(Icons.Default.Search, "Buscar")
+            }
+            IconButton(onClick = onNotificationsClick) {
+                Icon(Icons.Default.Notifications, "Notificaciones")
+            }
         },
-        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+        colors = TopAppBarDefaults.topAppBarColors(
             containerColor = Color.Transparent,
-            scrolledContainerColor = Color.Transparent
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+            actionIconContentColor = MaterialTheme.colorScheme.onSurface
         )
     )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainTabsScreen(rootNavController: NavHostController) {
+fun MainTabsScreen(rootNavController: NavHostController, userId: String, authViewModel: AuthViewModel) {
     val tabsNavController = rememberNavController()
     val navBackStackEntry by tabsNavController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Routes.HOME
     var showNotifications by remember { mutableStateOf(false) }
+    var showAddFriend by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val exploreViewModel: ExploreViewModel = viewModel()
     var isCollapsed by remember { mutableStateOf(false) }
@@ -444,9 +470,17 @@ fun MainTabsScreen(rootNavController: NavHostController) {
                     }
                 )
             }
-            composable(Routes.MENSAJERIA) { MensajeriaScreen() }
+            composable(Routes.MENSAJERIA) { 
+                ChatListScreen(
+                    userId = userId, 
+                    navController = rootNavController,
+                    showAddFriend = showAddFriend,
+                    onShowAddFriendChange = { showAddFriend = it }
+                ) 
+            }
             composable(Routes.MAS) {
                 MoreScreen(
+                    authViewModel = authViewModel,
                     onNavigateToExtension = { rootNavController.navigate(Routes.EXTENSION) },
                     onNavigateToMigration = { rootNavController.navigate(Routes.MIGRATE) },
                     onNavigateToStorage = { rootNavController.navigate(Routes.STORAGE_SETTINGS) }
@@ -460,66 +494,51 @@ fun MainTabsScreen(rootNavController: NavHostController) {
                 isCollapsed = isCollapsed,
                 onSearchClick = { rootNavController.navigate(Routes.SEARCH) },
                 onNotificationsClick = { showNotifications = !showNotifications },
+                onAddFriendClick = { showAddFriend = !showAddFriend },
+                showAddFriend = showAddFriend,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .statusBarsPadding()
             )
         }
 
-        val isDarkTheme = isSystemInDarkTheme()
-
-        val barBackgroundColor = if (isDarkTheme) Color.Black.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.85f)
-
-        val activeColor = if (isDarkTheme) Color.White else Color.Black
-        val inactiveColor = if (isDarkTheme) Color.White.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.4f)
-        val indicatorBgColor = if (isDarkTheme) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
-
-        Box(
+        NavigationBar(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(start = 20.dp, end = 20.dp, bottom = 12.dp)
+                .fillMaxWidth(),
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+            tonalElevation = 0.dp
         ) {
-            NavigationBar(
-                modifier = Modifier.clip(RoundedCornerShape(50)).height(60.dp),
-                containerColor = barBackgroundColor,
-                contentColor = activeColor,
-                tonalElevation = 0.dp,
-                windowInsets = WindowInsets(0, 0, 0, 0)
-            ) {
-                val items = listOf(
-                    Triple(Routes.HOME, Icons.Default.Home, "Biblioteca"),
-                    Triple(Routes.EXPLORE, Icons.Default.Explore, "Explorar"),
-                    Triple(Routes.MENSAJERIA, Icons.Default.ChatBubbleOutline, "Mensajes"),
-                    Triple(Routes.MAS, Icons.Default.MoreHoriz, "Más")
-                )
-                items.forEach { (route, icon, label) ->
-                    val isSelected = currentRoute == route
-                    NavigationBarItem(
-                        icon = { Icon(icon, contentDescription = label, modifier = Modifier.size(if (isSelected) 22.dp else 20.dp)) },
-                        label = { Text(label, fontSize = 10.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                        selected = isSelected,
-                        colors = NavigationBarItemDefaults.colors(
-                            indicatorColor = indicatorBgColor,
-                            selectedIconColor = activeColor,
-                            selectedTextColor = activeColor,
-                            unselectedIconColor = inactiveColor,
-                            unselectedTextColor = inactiveColor
-                        ),
-                        onClick = {
-                            if (currentRoute != route) {
-                                tabsNavController.navigate(route) {
-                                    popUpTo(Routes.HOME) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            } else if (route == Routes.EXPLORE) {
-                                exploreViewModel.toggleSourcesView(true)
+            val items = listOf(
+                Triple(Routes.HOME, Icons.Default.Home, "Biblioteca"),
+                Triple(Routes.EXPLORE, Icons.Default.Explore, "Explorar"),
+                Triple(Routes.MENSAJERIA, Icons.Default.ChatBubbleOutline, "Mensajes"),
+                Triple(Routes.MAS, Icons.Default.MoreHoriz, "Más")
+            )
+            items.forEach { (route, icon, label) ->
+                val isSelected = currentRoute == route
+                NavigationBarItem(
+                    icon = { Icon(icon, contentDescription = label) },
+                    label = { Text(label, fontSize = 11.sp) },
+                    selected = isSelected,
+                    colors = NavigationBarItemDefaults.colors(
+                        indicatorColor = Color.Transparent,
+                        selectedIconColor = MaterialTheme.colorScheme.onSurface,
+                        selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                    ),
+                    onClick = {
+                        if (currentRoute != route) {
+                            tabsNavController.navigate(route) {
+                                popUpTo(Routes.HOME) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
                             }
+                        } else if (route == Routes.EXPLORE) {
+                            exploreViewModel.toggleSourcesView(true)
                         }
-                    )
-                }
+                    }
+                )
             }
         }
 
