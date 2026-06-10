@@ -8,10 +8,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="PLACEHOLDER" />
-                  <option name="mobileSdkAppId" value="" />
-                  <option name="projectId" value="" />
-                  <option name="projectNumber" value="" />
+                  <option name="appId" value="com.example.shioriapp" />
+                  <option name="mobileSdkAppId" value="1:158539698592:android:571d3259fafff61859d4c5" />
+                  <option name="projectId" value="shioriapp-6f7496ac" />
+                  <option name="projectNumber" value="158539698592" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

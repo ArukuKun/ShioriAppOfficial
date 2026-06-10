@@ -12,22 +12,14 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -46,7 +38,7 @@ import com.example.shioriapp.data.repository.LibraryManager
 import com.example.shioriapp.domain.model.ChapterInfo
 import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.screens.*
-import com.example.shioriapp.viewmodel.ExploreViewModel
+import com.example.shioriapp.viewmodel.ExploreViewModel // 🔥 Aseguramos la importación del ExploreViewModel
 import org.json.JSONArray
 import java.io.File
 import java.net.URLDecoder
@@ -86,8 +78,7 @@ fun AppNavigation() {
     NavHost(
         navController = rootNavController,
         startDestination = Routes.MAIN_TABS,
-        modifier = Modifier
-            .fillMaxSize(),
+        modifier = Modifier.fillMaxSize().background(Color.Black),
         enterTransition = { slideInHorizontally(tween(300)) { it } + fadeIn(tween(300)) },
         exitTransition = { fadeOut(tween(300)) },
         popEnterTransition = { fadeIn(tween(300)) },
@@ -271,59 +262,31 @@ fun AppNavigation() {
     }
 }
 
+// TopAppBar sin modificaciones
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainTopAppBar(
     currentRoute: String,
-    isCollapsed: Boolean,
     onSearchClick: () -> Unit,
-    onNotificationsClick: () -> Unit,
-    modifier: Modifier = Modifier
+    onNotificationsClick: () -> Unit
 ) {
-    val isDarkTheme = isSystemInDarkTheme()
-    val iconTint = if (isCollapsed) Color.White else if (isDarkTheme) Color.White else Color.Black
     CenterAlignedTopAppBar(
-        modifier = modifier,
         title = {
-            AnimatedVisibility(
-                visible = !isCollapsed,
-                enter = fadeIn(tween(200)),
-                exit = fadeOut(tween(200))
-            ) {
-                when (currentRoute) {
-                    Routes.HOME -> {
-                        val logoRes = if (isSystemInDarkTheme()) R.drawable.ic_shiori_black else R.drawable.ic_shiori_white
-                        Image(painter = painterResource(id = logoRes), contentDescription = null, modifier = Modifier.height(40.dp))
-                    }
-                    Routes.EXPLORE -> Text("Explorar", fontWeight = FontWeight.Bold, color = iconTint)
-                    Routes.MENSAJERIA -> Text("Mensajería", fontWeight = FontWeight.Bold, color = iconTint)
-                    else -> Text("ShioriApp")
+            when (currentRoute) {
+                Routes.HOME -> {
+                    val logoRes = if (isSystemInDarkTheme()) R.drawable.ic_shiori_white else R.drawable.ic_shiori_black
+                    Image(painter = painterResource(id = logoRes), contentDescription = null, modifier = Modifier.height(40.dp))
                 }
+                Routes.EXPLORE -> Text("Explorar", fontWeight = FontWeight.Bold)
+                Routes.MENSAJERIA -> Text("Mensajería", fontWeight = FontWeight.Bold)
+                else -> Text("ShioriApp")
             }
         },
         actions = {
-            Row(
-                modifier = Modifier
-                    .padding(end = 12.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(
-                        if (isCollapsed) Color.Black.copy(alpha = 0.55f) else Color.Transparent
-                    )
-                    .padding(horizontal = if (isCollapsed) 4.dp else 0.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onSearchClick, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Default.Search, "Buscar", tint = iconTint)
-                }
-                IconButton(onClick = onNotificationsClick, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Default.Notifications, "Notificaciones", tint = iconTint)
-                }
-            }
+            IconButton(onClick = onSearchClick) { Icon(Icons.Default.Search, "Buscar") }
+            IconButton(onClick = onNotificationsClick) { Icon(Icons.Default.Notifications, "Notificaciones") }
         },
-        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-            containerColor = Color.Transparent,
-            scrolledContainerColor = Color.Transparent
-        )
+        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
     )
 }
 
@@ -335,159 +298,15 @@ fun MainTabsScreen(rootNavController: NavHostController) {
     val currentRoute = navBackStackEntry?.destination?.route ?: Routes.HOME
     var showNotifications by remember { mutableStateOf(false) }
     val context = LocalContext.current
+
+    // 🔥 1. CREAMOS EL VIEWMODEL AQUÍ ARRIBA
+    // Al crearlo aquí, tanto la barra de navegación como la pantalla Explore pueden usarlo y compartir la información.
     val exploreViewModel: ExploreViewModel = viewModel()
-    var isCollapsed by remember { mutableStateOf(false) }
-    val nestedScrollConnection = remember {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (available.y < -5) isCollapsed = true
-                if (available.y > 5) isCollapsed = false
-                return Offset.Zero
-            }
-        }
-    }
 
-    val view = LocalView.current
-    val isDarkTheme = isSystemInDarkTheme()
-    LaunchedEffect(isCollapsed, isDarkTheme) {
-        val window = (view.context as? android.app.Activity)?.window ?: return@LaunchedEffect
-
-        window.statusBarColor = if (isCollapsed) {
-            android.graphics.Color.argb(100, 0, 0, 0)
-        } else {
-            android.graphics.Color.TRANSPARENT
-        }
-
-        val insetsController = androidx.core.view.WindowCompat.getInsetsController(window, view)
-
-        if (isDarkTheme) {
-            insetsController.isAppearanceLightStatusBars = false
-        } else {
-            insetsController.isAppearanceLightStatusBars = !isCollapsed
-        }
-    }
-
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .nestedScroll(nestedScrollConnection)
-            .background(MaterialTheme.colorScheme.background)
-    )
-    {
-        NavHost(
-            navController = tabsNavController,
-            startDestination = Routes.HOME,
-            modifier = Modifier.fillMaxSize(),
-            enterTransition = { fadeIn(tween(200)) },
-            exitTransition = { fadeOut(tween(200)) }
-        ) {
-            composable(Routes.HOME) {
-                HomeScreen(
-                    onMangaClick = { manga ->
-                        val encUrl = URLEncoder.encode(manga.url, "UTF-8")
-                        val encTitle = URLEncoder.encode(manga.title, "UTF-8")
-                        val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
-                        rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=false")
-                    },
-                    onResumeClick = { manga ->
-                        var directJumpSuccess = false
-                        try {
-                            val hash = manga.url.hashCode()
-                            val capsFile = File(context.cacheDir, "${hash}_caps.json")
-                            if (capsFile.exists()) {
-                                val cArray = JSONArray(capsFile.readText())
-                                val cachedCaps = mutableListOf<ChapterInfo>()
-                                for (i in 0 until cArray.length()) {
-                                    val cObj = cArray.getJSONObject(i)
-                                    cachedCaps.add(ChapterInfo(name = cObj.getString("name"), url = cObj.getString("url")))
-                                }
-                                val progress = LibraryManager.progressMap.value[manga.url]
-                                val lastReadIndex = cachedCaps.indexOfFirst { it.url == progress?.lastChapterUrl }
-                                val chapterToOpen = if (lastReadIndex >= 0) {
-                                    cachedCaps[lastReadIndex]
-                                } else {
-                                    val numRegex = Regex("\\d+(\\.\\d+)?")
-                                    val firstNum = numRegex.find(cachedCaps.first().name)?.value?.toDoubleOrNull() ?: 0.0
-                                    val lastNum = numRegex.find(cachedCaps.last().name)?.value?.toDoubleOrNull() ?: 0.0
-                                    val isDescending = firstNum > lastNum
-                                    if (isDescending) cachedCaps.lastOrNull() else cachedCaps.firstOrNull()
-                                }
-                                if (chapterToOpen != null) {
-                                    ReaderDataCache.currentChapter = chapterToOpen
-                                    ReaderDataCache.chapters = cachedCaps
-                                    ReaderDataCache.mangaUrl = manga.url
-                                    val safeSource = if (manga.sourceName.isNotBlank()) manga.sourceName else "FuenteDesconocida"
-                                    val intent = Intent(context, ReaderActivity::class.java).apply { putExtra("sourceName", safeSource) }
-                                    context.startActivity(intent)
-                                    directJumpSuccess = true
-                                }
-                            }
-                        } catch (e: Exception) { Log.e("SHIORI_APP", "Falló el salto rápido: ${e.message}") }
-                        if (!directJumpSuccess) {
-                            val encUrl = URLEncoder.encode(manga.url, "UTF-8")
-                            val encTitle = URLEncoder.encode(manga.title, "UTF-8")
-                            val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
-                            rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=true")
-                        }
-                    }
-                )
-            }
-            composable(Routes.EXPLORE) {
-                ExploreScreen(
-                    viewModel = exploreViewModel,
-                    onMangaClick = { url, source, title ->
-                        val encUrl = URLEncoder.encode(url, "UTF-8")
-                        val encTitle = URLEncoder.encode(title, "UTF-8")
-                        val encSource = URLEncoder.encode(source, "UTF-8")
-                        rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=false")
-                    }
-                )
-            }
-            composable(Routes.MENSAJERIA) { MensajeriaScreen() }
-            composable(Routes.MAS) {
-                MoreScreen(
-                    onNavigateToExtension = { rootNavController.navigate(Routes.EXTENSION) },
-                    onNavigateToMigration = { rootNavController.navigate(Routes.MIGRATE) },
-                    onNavigateToStorage = { rootNavController.navigate(Routes.STORAGE_SETTINGS) }
-                )
-            }
-        }
-
-        if (currentRoute != Routes.MAS) {
-            MainTopAppBar(
-                currentRoute = currentRoute,
-                isCollapsed = isCollapsed,
-                onSearchClick = { rootNavController.navigate(Routes.SEARCH) },
-                onNotificationsClick = { showNotifications = !showNotifications },
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-            )
-        }
-
-        val isDarkTheme = isSystemInDarkTheme()
-
-        val barBackgroundColor = if (isDarkTheme) Color.Black.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.85f)
-
-        val activeColor = if (isDarkTheme) Color.White else Color.Black
-        val inactiveColor = if (isDarkTheme) Color.White.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.4f)
-        val indicatorBgColor = if (isDarkTheme) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(start = 20.dp, end = 20.dp, bottom = 12.dp)
-        ) {
-            NavigationBar(
-                modifier = Modifier.clip(RoundedCornerShape(50)).height(60.dp),
-                containerColor = barBackgroundColor,
-                contentColor = activeColor,
-                tonalElevation = 0.dp,
-                windowInsets = WindowInsets(0, 0, 0, 0)
-            ) {
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            NavigationBar(containerColor = Color.Transparent, tonalElevation = 0.dp) {
                 val items = listOf(
                     Triple(Routes.HOME, Icons.Default.Home, "Biblioteca"),
                     Triple(Routes.EXPLORE, Icons.Default.Explore, "Explorar"),
@@ -495,31 +314,140 @@ fun MainTabsScreen(rootNavController: NavHostController) {
                     Triple(Routes.MAS, Icons.Default.MoreHoriz, "Más")
                 )
                 items.forEach { (route, icon, label) ->
-                    val isSelected = currentRoute == route
                     NavigationBarItem(
-                        icon = { Icon(icon, contentDescription = label, modifier = Modifier.size(if (isSelected) 22.dp else 20.dp)) },
-                        label = { Text(label, fontSize = 10.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                        selected = isSelected,
-                        colors = NavigationBarItemDefaults.colors(
-                            indicatorColor = indicatorBgColor,
-                            selectedIconColor = activeColor,
-                            selectedTextColor = activeColor,
-                            unselectedIconColor = inactiveColor,
-                            unselectedTextColor = inactiveColor
-                        ),
+                        icon = { Icon(icon, contentDescription = label) },
+                        label = { Text(label) },
+                        selected = currentRoute == route,
                         onClick = {
                             if (currentRoute != route) {
+                                // Navegación normal si tocamos otra pestaña
                                 tabsNavController.navigate(route) {
                                     popUpTo(Routes.HOME) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
-                            } else if (route == Routes.EXPLORE) {
-                                exploreViewModel.toggleSourcesView(true)
+                            } else {
+                                // 🔥 2. LÓGICA DE DOBLE TOQUE
+                                // Si ya estamos en la pestaña y la volvemos a tocar...
+                                if (route == Routes.EXPLORE) {
+                                    exploreViewModel.toggleSourcesView(true) // ¡Dispara el PopUp!
+                                }
                             }
                         }
                     )
                 }
+            }
+        }
+    ) { innerPadding ->
+
+        NavHost(
+            navController = tabsNavController,
+            startDestination = Routes.HOME,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = innerPadding.calculateBottomPadding()),
+            enterTransition = { fadeIn(tween(200)) },
+            exitTransition = { fadeOut(tween(200)) }
+        ) {
+            composable(Routes.HOME) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    MainTopAppBar(
+                        currentRoute = Routes.HOME,
+                        onSearchClick = { rootNavController.navigate(Routes.SEARCH) },
+                        onNotificationsClick = { showNotifications = !showNotifications }
+                    )
+                    Box(modifier = Modifier.weight(1f)) {
+                        HomeScreen(
+                            onMangaClick = { manga ->
+                                val encUrl = URLEncoder.encode(manga.url, "UTF-8")
+                                val encTitle = URLEncoder.encode(manga.title, "UTF-8")
+                                val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
+                                rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=false")
+                            },
+                            onResumeClick = { manga ->
+                                var directJumpSuccess = false
+                                try {
+                                    val hash = manga.url.hashCode()
+                                    val capsFile = File(context.cacheDir, "${hash}_caps.json")
+                                    if (capsFile.exists()) {
+                                        val cArray = JSONArray(capsFile.readText())
+                                        val cachedCaps = mutableListOf<ChapterInfo>()
+                                        for (i in 0 until cArray.length()) {
+                                            val cObj = cArray.getJSONObject(i)
+                                            cachedCaps.add(ChapterInfo(name = cObj.getString("name"), url = cObj.getString("url")))
+                                        }
+                                        val progress = LibraryManager.progressMap.value[manga.url]
+                                        val lastReadIndex = cachedCaps.indexOfFirst { it.url == progress?.lastChapterUrl }
+                                        val chapterToOpen = if (lastReadIndex >= 0) {
+                                            cachedCaps[lastReadIndex]
+                                        } else {
+                                            val numRegex = Regex("\\d+(\\.\\d+)?")
+                                            val firstNum = numRegex.find(cachedCaps.first().name)?.value?.toDoubleOrNull() ?: 0.0
+                                            val lastNum = numRegex.find(cachedCaps.last().name)?.value?.toDoubleOrNull() ?: 0.0
+                                            val isDescending = firstNum > lastNum
+                                            if (isDescending) cachedCaps.lastOrNull() else cachedCaps.firstOrNull()
+                                        }
+                                        if (chapterToOpen != null) {
+                                            ReaderDataCache.currentChapter = chapterToOpen
+                                            ReaderDataCache.chapters = cachedCaps
+                                            ReaderDataCache.mangaUrl = manga.url
+                                            val safeSource = if (manga.sourceName.isNotBlank()) manga.sourceName else "FuenteDesconocida"
+                                            val intent = Intent(context, ReaderActivity::class.java).apply { putExtra("sourceName", safeSource) }
+                                            context.startActivity(intent)
+                                            directJumpSuccess = true
+                                        }
+                                    }
+                                } catch (e: Exception) { Log.e("SHIORI_APP", "Falló el salto rápido: ${e.message}") }
+
+                                if (!directJumpSuccess) {
+                                    val encUrl = URLEncoder.encode(manga.url, "UTF-8")
+                                    val encTitle = URLEncoder.encode(manga.title, "UTF-8")
+                                    val encSource = URLEncoder.encode(manga.sourceName, "UTF-8")
+                                    rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=true")
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+            composable(Routes.EXPLORE) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    MainTopAppBar(
+                        currentRoute = Routes.EXPLORE,
+                        onSearchClick = { rootNavController.navigate(Routes.SEARCH) },
+                        onNotificationsClick = { showNotifications = !showNotifications }
+                    )
+                    Box(modifier = Modifier.weight(1f)) {
+                        ExploreScreen(
+                            viewModel = exploreViewModel, // 🔥 3. INYECTAMOS EL VIEWMODEL AQUÍ
+                            onMangaClick = { url, source, title ->
+                                val encUrl = URLEncoder.encode(url, "UTF-8")
+                                val encTitle = URLEncoder.encode(title, "UTF-8")
+                                val encSource = URLEncoder.encode(source, "UTF-8")
+                                rootNavController.navigate("manga_details/$encSource?mangaUrl=$encUrl&mangaTitle=$encTitle&resume=false")
+                            }
+                        )
+                    }
+                }
+            }
+            composable(Routes.MENSAJERIA) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    MainTopAppBar(
+                        currentRoute = Routes.MENSAJERIA,
+                        onSearchClick = { rootNavController.navigate(Routes.SEARCH) },
+                        onNotificationsClick = { showNotifications = !showNotifications }
+                    )
+                    Box(modifier = Modifier.weight(1f)) {
+                        MensajeriaScreen()
+                    }
+                }
+            }
+            composable(Routes.MAS) {
+                MoreScreen(
+                    onNavigateToExtension = { rootNavController.navigate(Routes.EXTENSION) },
+                    onNavigateToMigration = { rootNavController.navigate(Routes.MIGRATE) },
+                    onNavigateToStorage = { rootNavController.navigate(Routes.STORAGE_SETTINGS) }
+                )
             }
         }
 
