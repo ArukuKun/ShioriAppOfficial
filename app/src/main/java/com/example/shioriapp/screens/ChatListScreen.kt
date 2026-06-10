@@ -13,10 +13,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.example.shioriapp.domain.model.Chat
 import com.example.shioriapp.domain.model.UserProfile
@@ -26,6 +27,7 @@ import com.example.shioriapp.viewmodel.ChatListViewModel
 @Composable
 fun ChatListScreen(
     userId: String,
+    navController: NavHostController
 ) {
     val viewModel: ChatListViewModel = viewModel(key = userId) { ChatListViewModel(userId) }
     val chats by viewModel.chats.collectAsState()
@@ -39,8 +41,13 @@ fun ChatListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Mensajes") },
+                title = { Text(if (showAddFriend) "Buscar Amigos" else "Mensajería") },
                 actions = {
+                    IconButton(onClick = { 
+                        showAddFriend = !showAddFriend
+                        if (!showAddFriend) searchQuery = ""
+                    }) {
+                        Icon(if (showAddFriend) Icons.Default.Close else Icons.Default.PersonAdd, null)
                     }
                 }
             )
@@ -62,27 +69,35 @@ fun ChatListScreen(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     leadingIcon = { Icon(Icons.Default.Search, null) }
                 )
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(searchResults) { user ->
-                            AddFriendItem(user, onAdd = { viewModel.sendFriendRequest(user.userId) })
-                        }
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(searchResults) { user ->
+                        AddFriendItem(user, onAdd = { viewModel.sendFriendRequest(user.userId) })
                     }
+                }
             } else {
                 var tabIndex by remember { mutableStateOf(0) }
                 TabRow(selectedTabIndex = tabIndex) {
                     Tab(selected = tabIndex == 0, onClick = { tabIndex = 0 }, text = { Text("Chats") })
                     Tab(selected = tabIndex == 1, onClick = { tabIndex = 1 }, text = { Text("Amigos") })
-                    Tab(selected = tabIndex == 2, onClick = { tabIndex = 2 }, text = { Text("Solicitudes (${friendRequests.size})") })
+                    Tab(selected = tabIndex == 2, onClick = { tabIndex = 2 }, text = { 
+                        Text("Solicitudes${if (friendRequests.isNotEmpty()) " (${friendRequests.size})" else ""}") 
+                    })
                 }
                 when (tabIndex) {
-                            })
-                                val existingChatId = viewModel.getChatIdWithFriend(friend.userId)
-                                if (existingChatId != null) {
-                                    navController.navigate("chat/$existingChatId/${friend.displayName}")
-                                } else {
-                                    navController.navigate("new_chat/${friend.userId}/${friend.displayName}")
-                                }
-                            })
+                    0 -> ChatList(chats, onChatClick = { chat ->
+                        navController.navigate("chat/${chat.chatId}/${chat.otherUserName}")
+                    })
+                    1 -> FriendList(friends, onMessageClick = { friend ->
+                        val existingChatId = viewModel.getChatIdWithFriend(friend.userId)
+                        if (existingChatId != null) {
+                            navController.navigate("chat/$existingChatId/${friend.displayName}")
+                        } else {
+                            navController.navigate("new_chat/${friend.userId}/${friend.displayName}")
+                        }
+                    })
+                    2 -> FriendRequestsList(friendRequests, onAccept = { requester ->
+                        viewModel.acceptFriendRequest(requester.userId)
+                    })
                 }
             }
         }
@@ -90,14 +105,29 @@ fun ChatListScreen(
 }
 
 @Composable
+fun ChatList(chats: List<Chat>, onChatClick: (Chat) -> Unit) {
     LazyColumn {
         items(chats) { chat ->
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Spacer(Modifier.width(16.dp))
-                    Column {
-                    }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onChatClick(chat) }
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AsyncImage(
+                    model = chat.otherUserPhotoUrl,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp).clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(Modifier.width(16.dp))
+                Column {
+                    Text(chat.otherUserName, fontWeight = FontWeight.Bold)
+                    Text(chat.lastMessage ?: "", maxLines = 1, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            HorizontalDivider()
         }
     }
 }
@@ -106,7 +136,13 @@ fun ChatListScreen(
 fun FriendList(friends: List<UserProfile>, onMessageClick: (UserProfile) -> Unit) {
     LazyColumn {
         items(friends) { friend ->
-            Row(Modifier.fillMaxWidth().clickable { onMessageClick(friend) }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { onMessageClick(friend) }
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 AsyncImage(
                     model = friend.photoUrl,
                     contentDescription = null,
@@ -128,7 +164,12 @@ fun FriendRequestsList(requests: List<UserProfile>, onAccept: (UserProfile) -> U
     LazyColumn {
         items(requests) { requester ->
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                AsyncImage(model = requester.photoUrl, contentDescription = null, modifier = Modifier.size(48.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+                AsyncImage(
+                    model = requester.photoUrl,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp).clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
                 Spacer(Modifier.width(16.dp))
                 Column {
                     Text(requester.displayName, fontWeight = FontWeight.Bold)
@@ -137,6 +178,7 @@ fun FriendRequestsList(requests: List<UserProfile>, onAccept: (UserProfile) -> U
                 Spacer(Modifier.weight(1f))
                 Button(onClick = { onAccept(requester) }) { Text("Aceptar") }
             }
+            HorizontalDivider()
         }
     }
 }
@@ -144,7 +186,12 @@ fun FriendRequestsList(requests: List<UserProfile>, onAccept: (UserProfile) -> U
 @Composable
 fun AddFriendItem(user: UserProfile, onAdd: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-        AsyncImage(model = user.photoUrl, contentDescription = null, modifier = Modifier.size(48.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+        AsyncImage(
+            model = user.photoUrl,
+            contentDescription = null,
+            modifier = Modifier.size(48.dp).clip(CircleShape),
+            contentScale = ContentScale.Crop
+        )
         Spacer(Modifier.width(16.dp))
         Column {
             Text(user.displayName, fontWeight = FontWeight.Bold)
@@ -153,4 +200,5 @@ fun AddFriendItem(user: UserProfile, onAdd: () -> Unit) {
         Spacer(Modifier.weight(1f))
         IconButton(onClick = onAdd) { Icon(Icons.Default.PersonAdd, null) }
     }
+    HorizontalDivider()
 }

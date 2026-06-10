@@ -45,8 +45,10 @@ import com.example.shioriapp.R
 import com.example.shioriapp.data.repository.LibraryManager
 import com.example.shioriapp.domain.model.ChapterInfo
 import com.example.shioriapp.domain.model.MangaInfo
+import com.example.shioriapp.viewmodel.AuthViewModel
 import com.example.shioriapp.screens.*
 import com.example.shioriapp.viewmodel.ExploreViewModel
+import androidx.compose.runtime.collectAsState
 import org.json.JSONArray
 import java.io.File
 import java.net.URLDecoder
@@ -82,19 +84,41 @@ object MigrationCache {
 fun AppNavigation() {
     val rootNavController = rememberNavController()
     val context = LocalContext.current
+    val authViewModel: AuthViewModel = viewModel(factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+        override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+            return AuthViewModel(context.applicationContext) as T
+        }
+    })
+    val authState by authViewModel.authState.collectAsState()
 
     NavHost(
         navController = rootNavController,
-        startDestination = Routes.MAIN_TABS,
-        modifier = Modifier
-            .fillMaxSize(),
+        startDestination = "auth_wrapper",
+        modifier = Modifier.fillMaxSize(),
         enterTransition = { slideInHorizontally(tween(300)) { it } + fadeIn(tween(300)) },
         exitTransition = { fadeOut(tween(300)) },
         popEnterTransition = { fadeIn(tween(300)) },
         popExitTransition = { slideOutHorizontally(tween(300)) { it } + fadeOut(tween(300)) }
     ) {
-        composable(Routes.MAIN_TABS) {
-            MainTabsScreen(rootNavController)
+        composable("auth_wrapper") {
+            when (val state = authState) {
+                is AuthViewModel.AuthState.Authenticated -> {
+                    MainTabsScreen(rootNavController, state.userId)
+                }
+                is AuthViewModel.AuthState.Loading -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+                else -> {
+                    LoginScreen(
+                        authViewModel = authViewModel,
+                        onLoginSuccess = {
+                            // El StateFlow se encargará de recomponer
+                        }
+                    )
+                }
+            }
         }
 
         composable(
@@ -329,7 +353,7 @@ fun MainTopAppBar(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainTabsScreen(rootNavController: NavHostController) {
+fun MainTabsScreen(rootNavController: NavHostController, userId: String) {
     val tabsNavController = rememberNavController()
     val navBackStackEntry by tabsNavController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Routes.HOME
@@ -444,7 +468,9 @@ fun MainTabsScreen(rootNavController: NavHostController) {
                     }
                 )
             }
-            composable(Routes.MENSAJERIA) { MensajeriaScreen() }
+            composable(Routes.MENSAJERIA) { 
+                ChatListScreen(userId = userId, navController = rootNavController) 
+            }
             composable(Routes.MAS) {
                 MoreScreen(
                     onNavigateToExtension = { rootNavController.navigate(Routes.EXTENSION) },

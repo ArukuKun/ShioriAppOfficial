@@ -8,5 +8,7 @@ data class Chat(
     var lastMessage: String? = null,
     var lastMessageTime: Date = Date(),
     var unreadCount: Map<String, Int> = emptyMap(),
-    var type: String = "private"
+    var type: String = "private",
+    var otherUserName: String = "",
+    var otherUserPhotoUrl: String? = null
 )
