@@ -32,8 +32,6 @@ import kotlinx.coroutines.launch
 fun ChatScreen(
     chatId: String,
     currentUserId: String,
-    friendName: String,
-    onBack: () -> Unit
 ) {
     val viewModel: ChatViewModel = viewModel(key = chatId) { ChatViewModel(chatId, currentUserId) }
     val messages by viewModel.messages.collectAsState()
@@ -60,7 +58,6 @@ fun ChatScreen(
             TopAppBar(
                 title = { Text(friendName) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, null)
                     }
                 }
