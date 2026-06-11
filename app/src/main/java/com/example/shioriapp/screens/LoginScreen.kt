@@ -30,11 +30,9 @@ import com.example.shioriapp.MainActivity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LoginScreen(
-    authViewModel: AuthViewModel,
-    onLoginSuccess: () -> Unit
-) {
+fun LoginScreen(onLoginSuccess: () -> Unit) {
     val context = LocalContext.current
+    val authViewModel: AuthViewModel = viewModel(factory = AuthViewModelFactory(context))
     val authState by authViewModel.authState.collectAsState()
     val errorMessage by authViewModel.errorMessage.collectAsState()
     val coroutineScope = rememberCoroutineScope()
@@ -43,30 +41,6 @@ fun LoginScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
-
-    val googleLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val task = com.google.android.gms.auth.api.signin.GoogleSignIn.getSignedInAccountFromIntent(result.data)
-        try {
-            val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
-            val idToken = account.idToken
-            android.util.Log.d("GOOGLE_AUTH", "ID Token obtenido correctamente: ${idToken?.take(10)}...")
-            
-            if (idToken != null) {
-                authViewModel.loginWithGoogle(idToken)
-            } else {
-                android.util.Log.e("GOOGLE_AUTH", "Error: El ID Token es nulo.")
-                authViewModel.setErrorMessage("Error de Google: El ID Token es nulo. Verifica la configuración de Firebase.")
-            }
-        } catch (e: com.google.android.gms.common.api.ApiException) {
-            android.util.Log.e("GOOGLE_AUTH", "Error API Google: ${e.statusCode}", e)
-            authViewModel.setErrorMessage("Error Google (Código ${e.statusCode}). Revisa el SHA-1 en Firebase.")
-        } catch (e: Exception) {
-            android.util.Log.e("GOOGLE_AUTH", "Error en el resultado de Google SignIn", e)
-            authViewModel.setErrorMessage("Error inesperado: ${e.localizedMessage}")
-        }
-    }
 
     // Observamos el código que llega desde MainActivity (Deep Link)
     val externalCode = MainActivity.authCode
@@ -170,6 +144,25 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
             
+            val googleLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                val task = com.google.android.gms.auth.api.signin.GoogleSignIn.getSignedInAccountFromIntent(result.data)
+                try {
+                    val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+                    val idToken = account.idToken
+                    android.util.Log.d("GOOGLE_AUTH", "ID Token obtenido correctamente: ${idToken?.take(10)}...")
+                    
+                    if (idToken != null) {
+                        authViewModel.loginWithGoogle(idToken)
+                    } else {
+                        android.util.Log.e("GOOGLE_AUTH", "Error: El ID Token es nulo.")
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("GOOGLE_AUTH", "Error en el resultado de Google SignIn", e)
+                }
+            }
+
             OutlinedButton(
                 onClick = {
                     android.util.Log.d("GOOGLE_AUTH", "Iniciando proceso de login...")

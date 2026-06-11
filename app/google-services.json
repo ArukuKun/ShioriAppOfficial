@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "158539698592",
+    "project_id": "shioriapp-6f7496ac",
+    "storage_bucket": "shioriapp-6f7496ac.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:158539698592:android:571d3259fafff61859d4c5",
+        "android_client_info": {
+          "package_name": "com.example.shioriapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "158539698592-82cfuq1bf5vivhqtojroph4nlfp7p5k1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB3-bQaBAUdTUizwdYh8U_kpDEG-ZB7Sbg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "158539698592-82cfuq1bf5vivhqtojroph4nlfp7p5k1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
