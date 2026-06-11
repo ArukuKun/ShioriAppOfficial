@@ -23,6 +23,7 @@ class AuthViewModel(private val context: Context) : ViewModel() {
     sealed class AuthState {
         object Loading : AuthState()
         object Unauthenticated : AuthState()
+        object Guest : AuthState()
         data class Authenticated(val userId: String, val profile: UserProfile?) : AuthState()
     }
 
@@ -176,6 +177,10 @@ class AuthViewModel(private val context: Context) : ViewModel() {
                 _authState.value = AuthState.Unauthenticated
             }
         }
+    }
+
+    fun loginAsGuest() {
+        _authState.value = AuthState.Guest
     }
 
     fun logout() {
