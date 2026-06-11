@@ -53,6 +53,7 @@ fun LoginScreen(
     var displayName by remember { mutableStateOf("") }
 
     val googleLauncher = rememberLauncherForActivityResult(
+
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         val task = com.google.android.gms.auth.api.signin.GoogleSignIn.getSignedInAccountFromIntent(result.data)
@@ -214,19 +215,7 @@ fun LoginScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
 
-            // Social Section
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                HorizontalDivider(modifier = Modifier.weight(1f), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                Text(" O ", modifier = Modifier.padding(horizontal = 12.dp), fontSize = 10.sp, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.Bold)
-                HorizontalDivider(modifier = Modifier.weight(1f), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                SocialIcon(Icons.Default.GTranslate, "Google") { 
                     val gso = com.google.android.gms.auth.api.signin.GoogleSignInOptions.Builder(com.google.android.gms.auth.api.signin.GoogleSignInOptions.DEFAULT_SIGN_IN)
                         .requestIdToken(context.getString(R.string.default_web_client_id))
                         .requestEmail()

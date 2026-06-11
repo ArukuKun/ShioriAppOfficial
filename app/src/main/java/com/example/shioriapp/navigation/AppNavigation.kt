@@ -103,10 +103,6 @@ fun AppNavigation() {
         composable("auth_wrapper") {
             when (val state = authState) {
                 is AuthViewModel.AuthState.Authenticated -> {
-                    MainTabsScreen(rootNavController, state.userId, authViewModel)
-                }
-                is AuthViewModel.AuthState.Guest -> {
-                    MainTabsScreen(rootNavController, "guest_user", authViewModel)
                 }
                 is AuthViewModel.AuthState.Loading -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -354,7 +350,7 @@ fun MainTopAppBar(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainTabsScreen(rootNavController: NavHostController, userId: String, authViewModel: AuthViewModel) {
+
     val tabsNavController = rememberNavController()
     val navBackStackEntry by tabsNavController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Routes.HOME
@@ -471,12 +467,7 @@ fun MainTabsScreen(rootNavController: NavHostController, userId: String, authVie
                 )
             }
             composable(Routes.MENSAJERIA) { 
-                ChatListScreen(
-                    userId = userId, 
-                    navController = rootNavController,
-                    showAddFriend = showAddFriend,
-                    onShowAddFriendChange = { showAddFriend = it }
-                ) 
+
             }
             composable(Routes.MAS) {
                 MoreScreen(
