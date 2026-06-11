@@ -1,38 +1,31 @@
 package com.example.shioriapp.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.example.shioriapp.domain.model.Chat
 import com.example.shioriapp.domain.model.UserProfile
 import com.example.shioriapp.viewmodel.ChatListViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatListScreen(
     userId: String,
-    navController: NavHostController,
-    showAddFriend: Boolean = false,
-    onShowAddFriendChange: (Boolean) -> Unit = {}
 ) {
     val viewModel: ChatListViewModel = viewModel(key = userId) { ChatListViewModel(userId) }
     val chats by viewModel.chats.collectAsState()
@@ -41,96 +34,55 @@ fun ChatListScreen(
     val searchResults by viewModel.searchResults.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
+    var showAddFriend by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        // Espacio para la TopAppBar estandarizado
-        Spacer(modifier = Modifier.height(96.dp))
-
-        if (showAddFriend) {
-            TextField(
-                value = searchQuery,
-                onValueChange = { query ->
-                    searchQuery = query
-                    viewModel.searchUsers(query)
-                },
-                placeholder = { Text("Nombre de usuario...", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 16.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                leadingIcon = { Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.onSurface) },
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    disabledContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface
-                )
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Mensajes") },
+                actions = {
+                    }
+                }
             )
-            LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 100.dp)) {
-                items(searchResults) { user ->
-                    AddFriendItem(user, onAdd = { viewModel.sendFriendRequest(user.userId) })
-                }
-            }
-        } else {
-            var tabIndex by remember { mutableStateOf(0) }
-            
-            TabRow(
-                selectedTabIndex = tabIndex,
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                divider = {},
-                indicator = { tabPositions ->
-                    TabRowDefaults.SecondaryIndicator(
-                        Modifier.tabIndicatorOffset(tabPositions[tabIndex]),
-                        height = 2.dp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                },
-                modifier = Modifier
-                    .padding(horizontal = 16.dp)
-                    .clip(RoundedCornerShape(12.dp))
-            ) {
-                val tabs = listOf("Chats", "Amigos", "Solicitudes")
-                tabs.forEachIndexed { index, title ->
-                    Tab(
-                        selected = tabIndex == index,
-                        onClick = { tabIndex = index },
-                        text = { 
-                            val label = if (index == 2 && friendRequests.isNotEmpty()) "$title (${friendRequests.size})" else title
-                            Text(
-                                label, 
-                                fontWeight = if (tabIndex == index) FontWeight.Bold else FontWeight.Normal,
-                                fontSize = 14.sp,
-                                modifier = Modifier.padding(vertical = 8.dp)
-                            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            if (showAddFriend) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { query ->
+                        searchQuery = query
+                        viewModel.searchUsers(query)
+                    },
+                    placeholder = { Text("Buscar por nombre...") },
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    leadingIcon = { Icon(Icons.Default.Search, null) }
+                )
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(searchResults) { user ->
+                            AddFriendItem(user, onAdd = { viewModel.sendFriendRequest(user.userId) })
                         }
-                    )
+                    }
+            } else {
+                var tabIndex by remember { mutableStateOf(0) }
+                TabRow(selectedTabIndex = tabIndex) {
+                    Tab(selected = tabIndex == 0, onClick = { tabIndex = 0 }, text = { Text("Chats") })
+                    Tab(selected = tabIndex == 1, onClick = { tabIndex = 1 }, text = { Text("Amigos") })
+                    Tab(selected = tabIndex == 2, onClick = { tabIndex = 2 }, text = { Text("Solicitudes (${friendRequests.size})") })
                 }
-            }
-            
-            Box(modifier = Modifier.fillMaxSize()) {
                 when (tabIndex) {
-                    0 -> ChatList(chats, onChatClick = { chat ->
-                        navController.navigate("chat/${chat.chatId}/${chat.otherUserName}")
-                    })
-                    1 -> FriendList(friends, onMessageClick = { friend ->
-                        val existingChatId = viewModel.getChatIdWithFriend(friend.userId)
-                        if (existingChatId != null) {
-                            navController.navigate("chat/$existingChatId/${friend.displayName}")
-                        } else {
-                            navController.navigate("new_chat/${friend.userId}/${friend.displayName}")
-                        }
-                    })
-                    2 -> FriendRequestsList(friendRequests, onAccept = { requester ->
-                        viewModel.acceptFriendRequest(requester.userId)
-                    })
+                            })
+                                val existingChatId = viewModel.getChatIdWithFriend(friend.userId)
+                                if (existingChatId != null) {
+                                    navController.navigate("chat/$existingChatId/${friend.displayName}")
+                                } else {
+                                    navController.navigate("new_chat/${friend.userId}/${friend.displayName}")
+                                }
+                            })
                 }
             }
         }
@@ -138,37 +90,11 @@ fun ChatListScreen(
 }
 
 @Composable
-fun ChatList(chats: List<Chat>, onChatClick: (Chat) -> Unit) {
-    if (chats.isEmpty()) {
-        EmptyStateView(Icons.Default.ChatBubbleOutline, "No hay conversaciones aún")
-    } else {
-        LazyColumn(contentPadding = PaddingValues(bottom = 100.dp)) {
-            items(chats) { chat ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onChatClick(chat) }
-                        .padding(horizontal = 24.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    AsyncImage(
-                        model = chat.otherUserPhotoUrl,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentScale = ContentScale.Crop
-                    )
+    LazyColumn {
+        items(chats) { chat ->
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(chat.otherUserName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Text(
-                            chat.lastMessage ?: "Sin mensajes", 
-                            maxLines = 1, 
-                            fontSize = 13.sp, 
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    Column {
                     }
                 }
             }
@@ -178,64 +104,38 @@ fun ChatList(chats: List<Chat>, onChatClick: (Chat) -> Unit) {
 
 @Composable
 fun FriendList(friends: List<UserProfile>, onMessageClick: (UserProfile) -> Unit) {
-    if (friends.isEmpty()) {
-        EmptyStateView(Icons.Default.PeopleOutline, "Aún no tienes amigos agregados")
-    } else {
-        LazyColumn(contentPadding = PaddingValues(bottom = 100.dp)) {
-            items(friends) { friend ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { onMessageClick(friend) }
-                        .padding(horizontal = 24.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    AsyncImage(
-                        model = friend.photoUrl,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentScale = ContentScale.Crop
-                    )
-                    Spacer(Modifier.width(16.dp))
-                    Text(friend.displayName, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                    Spacer(Modifier.weight(1f))
-                    Icon(Icons.Default.Message, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                }
+    LazyColumn {
+        items(friends) { friend ->
+            Row(Modifier.fillMaxWidth().clickable { onMessageClick(friend) }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                AsyncImage(
+                    model = friend.photoUrl,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp).clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(Modifier.width(16.dp))
+                Text(friend.displayName, fontSize = 16.sp)
+                Spacer(Modifier.weight(1f))
+                Icon(Icons.Default.Message, null)
             }
+            HorizontalDivider()
         }
     }
 }
 
 @Composable
 fun FriendRequestsList(requests: List<UserProfile>, onAccept: (UserProfile) -> Unit) {
-    if (requests.isEmpty()) {
-        EmptyStateView(Icons.Default.PersonSearch, "No hay solicitudes pendientes")
-    } else {
-        LazyColumn(contentPadding = PaddingValues(bottom = 100.dp)) {
-            items(requests) { requester ->
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    AsyncImage(
-                        model = requester.photoUrl,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentScale = ContentScale.Crop
-                    )
-                    Spacer(Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(requester.displayName, fontWeight = FontWeight.Bold)
-                        Text("Quiere ser tu amigo", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Button(
-                        onClick = { onAccept(requester) },
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp)
-                    ) {
-                        Text("Aceptar", fontSize = 12.sp)
-                    }
+    LazyColumn {
+        items(requests) { requester ->
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                AsyncImage(model = requester.photoUrl, contentDescription = null, modifier = Modifier.size(48.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+                Spacer(Modifier.width(16.dp))
+                Column {
+                    Text(requester.displayName, fontWeight = FontWeight.Bold)
+                    Text("Solicitud de amistad", fontSize = 12.sp)
                 }
+                Spacer(Modifier.weight(1f))
+                Button(onClick = { onAccept(requester) }) { Text("Aceptar") }
             }
         }
     }
@@ -243,36 +143,14 @@ fun FriendRequestsList(requests: List<UserProfile>, onAccept: (UserProfile) -> U
 
 @Composable
 fun AddFriendItem(user: UserProfile, onAdd: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp), 
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        AsyncImage(
-            model = user.photoUrl,
-            contentDescription = null,
-            modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
-            contentScale = ContentScale.Crop
-        )
+    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        AsyncImage(model = user.photoUrl, contentDescription = null, modifier = Modifier.size(48.dp).clip(CircleShape), contentScale = ContentScale.Crop)
         Spacer(Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
+        Column {
             Text(user.displayName, fontWeight = FontWeight.Bold)
-            Text(user.email ?: "", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(user.email ?: "", fontSize = 12.sp)
         }
-        IconButton(onClick = onAdd) { 
-            Icon(Icons.Default.PersonAdd, null, tint = MaterialTheme.colorScheme.primary) 
-        }
-    }
-}
-
-@Composable
-fun EmptyStateView(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(bottom = 100.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(icon, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.outlineVariant)
-        Spacer(Modifier.height(16.dp))
-        Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+        Spacer(Modifier.weight(1f))
+        IconButton(onClick = onAdd) { Icon(Icons.Default.PersonAdd, null) }
     }
 }
