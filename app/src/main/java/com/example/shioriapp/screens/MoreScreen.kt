@@ -95,7 +95,6 @@ fun MoreScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // --- SECCIÓN 3: HERRAMIENTAS ---
         SettingsSectionTitle(title = "Herramientas")
         SettingsItem(
             icon = Icons.Default.ImportExport,
