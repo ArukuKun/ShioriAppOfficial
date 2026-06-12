@@ -20,13 +20,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.shioriapp.R
+import com.example.shioriapp.navigation.Routes
+import com.example.shioriapp.viewmodel.AuthViewModel
 
 @Composable
 fun MoreScreen(
+    authViewModel: AuthViewModel,
     onNavigateToExtension: () -> Unit,
+    onNavigateToRepository: () -> Unit,
     onNavigateToMigration: () -> Unit,
-    onNavigateToStorage: () -> Unit
-) {
+    onNavigateToStorage: () -> Unit,
+    onNavigateToSettings: () -> Unit,
+){
     val isDarkMode = isSystemInDarkTheme()
 
     Column(
@@ -58,61 +63,64 @@ fun MoreScreen(
             )
         }
 
-        SettingsSectionTitle(title = "Sincronización")
+        SettingsSectionTitle(title = "Integraciones")
+        SettingsItem(
+            icon = Icons.Default.MusicNote,
+            title = "Spotify",
+            subtitle = "Vincula tu cuenta para escuchar OSTs",
+            onClick = { /* TODO: Lógica de Login de Spotify */ }
+        )
         SettingsItem(
             icon = Icons.Default.Sync,
             title = "AnimeTrack / AniList",
             subtitle = "Sincroniza tus capítulos leídos"
         )
 
-        SettingsItem(
-            icon = Icons.Default.ImportExport,
-            title = "Migrar",
-            subtitle = "Migra mangas de una extensión a otra",
-            onClick = { onNavigateToMigration() }
-        )
-
         Spacer(modifier = Modifier.height(16.dp))
 
+        // --- SECCIÓN 2: FUENTES ---
         SettingsSectionTitle(title = "Fuentes")
-
         SettingsItem(
             icon = Icons.Default.CloudDownload,
             title = "Extensiones",
             subtitle = "Gestiona las extensiones de mangas",
             onClick = { onNavigateToExtension() }
         )
-
         SettingsItem(
-            icon = Icons.Default.CloudDownload,
+            icon = Icons.Default.FolderSpecial,
             title = "Repositorios",
             subtitle = "Gestiona los repositorios añadidos",
-            onClick = { }
+            onClick = { onNavigateToRepository() }
         )
 
+        Spacer(modifier = Modifier.height(16.dp))
 
+        // --- SECCIÓN 3: HERRAMIENTAS ---
+        SettingsSectionTitle(title = "Herramientas")
+        SettingsItem(
+            icon = Icons.Default.ImportExport,
+            title = "Migrar",
+            subtitle = "Migra mangas de una extensión a otra",
+            onClick = { onNavigateToMigration() }
+        )
         SettingsItem(
             icon = Icons.Default.Storage,
-            title = "Almacenamiento",
-            subtitle = "Limpiar caché y mangas descargados",
+            title = "Gestor de Descargas",
+            subtitle = "Ver y organizar tus mangas descargados",
             onClick = { onNavigateToStorage() }
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        SettingsSectionTitle(title = "General")
+        SettingsSectionTitle(title = "Sistema")
         SettingsItem(
-            icon = Icons.Default.ColorLens,
-            title = "Apariencia",
-            subtitle = if (isDarkMode) "Modo Oscuro activado" else "Modo Claro activado"
-        )
-        SettingsItem(
-            icon = Icons.Default.Notifications,
-            title = "Notificaciones",
-            subtitle = "Avisos de nuevos capítulos"
+            icon = Icons.Default.Settings,
+            title = "Configuración",
+            subtitle = "Apariencia, lector, notificaciones y caché",
+            onClick = { onNavigateToSettings() }
         )
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(110.dp))
     }
 }
 

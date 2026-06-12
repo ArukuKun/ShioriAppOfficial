@@ -8,8 +8,9 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <queries>
         <intent>
@@ -20,6 +21,7 @@
     </queries>
 
     <application
+        android:name=".ShioriApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -29,6 +31,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ShioriApp"
         tools:replace="android:allowBackup,android:fullBackupContent">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -44,6 +47,14 @@
             android:name=".screens.ReaderActivity"
             android:theme="@style/Theme.ShioriApp"
             android:exported="false" />
+
+        <service
+            android:name=".service.ShioriFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"
