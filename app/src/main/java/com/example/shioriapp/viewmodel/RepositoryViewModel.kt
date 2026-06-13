@@ -1,8 +1,10 @@
 package com.example.shioriapp.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.shioriapp.data.network.RetrofitClient
 import com.example.shioriapp.data.repository.AppDatabase
 import com.example.shioriapp.data.repository.RepositoryEntity
 import kotlinx.coroutines.flow.SharingStarted
@@ -46,4 +48,23 @@ class RepositoryViewModel(application: Application) : AndroidViewModel(applicati
             dao.deleteRepository(repo)
         }
     }
+
+    fun testConnection(url: String) {
+        viewModelScope.launch {
+            try {
+                Log.d("SHIORI_TEST", "viajando a internet... conectando a: $url")
+
+                // ¡Aquí ocurre la magia!
+                val results = RetrofitClient.api.getExtensions(url)
+
+                Log.d("SHIORI_TEST", "¡BINGO! 🎉 Encontré ${results.size} extensiones.")
+                if (results.isNotEmpty()) {
+                    Log.d("SHIORI_TEST", "El primer anime de la lista es: ${results[0].name} (Idioma: ${results[0].lang})")
+                }
+            } catch (e: Exception) {
+                Log.e("SHIORI_TEST", "Ups, algo falló en la descarga: ${e.message}")
+            }
+        }
+    }
 }
+

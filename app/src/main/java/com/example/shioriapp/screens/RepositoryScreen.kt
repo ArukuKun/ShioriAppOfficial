@@ -1,6 +1,7 @@
 package com.example.shioriapp.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable // <-- Importamos la función de clic
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,18 +25,12 @@ import com.example.shioriapp.data.repository.RepositoryEntity
 import com.example.shioriapp.viewmodel.RepositoryViewModel
 import java.util.UUID
 
-// IMPORTANTE: Si tus archivos de base de datos están en otra carpeta (ej. 'data'),
-// asegúrate de descomentar o agregar estos imports según la estructura de tu proyecto:
-// import com.example.shioriapp.data.RepositoryEntity
-// import com.example.shioriapp.data.RepositoryViewModel
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RepositoryScreen(
     onBack: () -> Unit,
-    viewModel: RepositoryViewModel = viewModel() // <-- Conectamos el motor de la base de datos
+    viewModel: RepositoryViewModel = viewModel()
 ) {
-    // Escuchamos la base de datos en tiempo real
     val repos by viewModel.repositories.collectAsState(initial = emptyList())
 
     var showDialog by remember { mutableStateOf(false) }
@@ -88,13 +83,16 @@ fun RepositoryScreen(
                 items(repos, key = { it.id }) { repo ->
                     RepositoryCard(
                         repo = repo,
+                        onClick = {
+                            // ¡AQUÍ ESTÁ LA MAGIA! Al tocar la tarjeta, busca en internet
+                            viewModel.testConnection(repo.url)
+                        },
                         onEdit = {
                             editingRepo = it
                             tempName = it.name
                             tempUrl = it.url
                             showDialog = true
                         },
-                        // Borramos directamente desde el ViewModel
                         onDelete = { viewModel.deleteRepository(it) }
                     )
                 }
@@ -133,11 +131,9 @@ fun RepositoryScreen(
                 Button(
                     onClick = {
                         if (tempName.isNotBlank() && tempUrl.isNotBlank()) {
-                            // Mantenemos el ID original si estamos editando, o creamos uno nuevo
                             val idToSave = editingRepo?.id ?: UUID.randomUUID().toString()
                             val isDefaultStatus = editingRepo?.isDefault ?: false
 
-                            // Guardamos en Room
                             viewModel.insertRepository(
                                 RepositoryEntity(
                                     id = idToSave,
@@ -164,12 +160,15 @@ fun RepositoryScreen(
 
 @Composable
 fun RepositoryCard(
-    repo: RepositoryEntity, // Usamos la clase Entity de Room en lugar de la local
+    repo: RepositoryEntity,
+    onClick: () -> Unit, // <-- Nuevo parámetro para recibir el clic
     onEdit: (RepositoryEntity) -> Unit,
     onDelete: (RepositoryEntity) -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }, // <-- Hacemos que la tarjeta reaccione al dedo
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ),

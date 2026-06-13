@@ -37,7 +37,7 @@ enum class NsfwFilterState { SHOW_ALL, ONLY_NSFW, HIDE_NSFW }
 @Composable
 fun ExtensionsScreen(
     onBack: () -> Unit,
-    viewModel: ExtensionViewModel = viewModel()
+    viewModel: ExtensionViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -235,6 +235,7 @@ fun ExtensionsScreen(
                             nsfw = extension.nsfw == 1,
                             state = currentState,
                             selectedTab = selectedTabIndex,
+                            repoBaseUrl = extension.repoBaseUrl,
                             onInstallClick = { viewModel.installExtension(context, extension) },
                             onUninstallClick = { viewModel.uninstallExtension(context, extension) }
                         )
@@ -329,6 +330,7 @@ fun RepositoryExtensionCard(
     nsfw: Boolean,
     state: InstallState,
     selectedTab: Int,
+    repoBaseUrl: String,
     onInstallClick: () -> Unit,
     onUninstallClick: () -> Unit
 ) {
@@ -347,7 +349,7 @@ fun RepositoryExtensionCard(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val iconUrl = "https://raw.githubusercontent.com/keiyoushi/extensions/repo/icon/${pkg}.png"
+            val iconUrl = "${repoBaseUrl}icon/${pkg}.png"
             AsyncImage(
                 model = iconUrl,
                 contentDescription = "Icono de $name",

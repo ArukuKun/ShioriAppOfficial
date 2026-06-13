@@ -10,5 +10,6 @@ data class ExtensionInfo(
     val lang: String,
     val code: Long,
     val version: String,
-    val nsfw: Int
+    val nsfw: Int,
+    var repoBaseUrl: String = ""
 )

@@ -1,13 +1,9 @@
 package com.example.shioriapp.core.util
 
-import android.content.ContentValues.TAG
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
-import android.widget.Toast
 import com.example.shioriapp.domain.model.ChapterInfo
 import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.domain.model.PageInfo
@@ -40,13 +36,32 @@ object ExtensionLoader {
                 packageManager.getInstalledApplications(flags)
             }
 
+            android.util.Log.d(
+                "SHIORI_LOADER",
+                "🔍 Buscando extensiones en ${apps.size} aplicaciones instaladas..."
+            )
+            var mangaCount = 0
+            var animeCount = 0
+
             for (appInfo in apps) {
-                val isExtension = appInfo.packageName.contains("tachiyomi.extension") ||
-                        appInfo.metaData?.containsKey("tachiyomi.extension.class") == true
+                val pkgName = appInfo.packageName
+
+                val isExtension = pkgName.contains("eu.kanade.tachiyomi.extension") ||
+                        pkgName.contains("eu.kanade.tachiyomi.animeextension") ||
+                        pkgName.contains("aniyomi.extension") ||
+                        pkgName.contains("keiyoushin.extension") ||
+                        appInfo.metaData?.containsKey("tachiyomi.extension.class") == true ||
+                        appInfo.metaData?.containsKey("tachiyomi.animeextension.class") == true
 
                 if (isExtension) {
-                    val loadedSources = loadExtensionList(context, appInfo.packageName)
+                    val loadedSources = loadExtensionList(context, pkgName)
                     sources.addAll(loadedSources)
+
+                    if (pkgName.contains("anime") || pkgName.contains("aniyomi")) {
+                        animeCount += loadedSources.size
+                    } else {
+                        mangaCount += loadedSources.size
+                    }
 
                     // 🔥 GUARDAMOS LA EXTENSIÓN EN LA BÓVEDA AL INSTANTE
                     loadedSources.forEach { source ->
@@ -54,6 +69,12 @@ object ExtensionLoader {
                     }
                 }
             }
+
+            android.util.Log.d(
+                "SHIORI_LOADER",
+                "✅ Carga completa: $mangaCount de Manga y $animeCount de Anime. Total en Bóveda: ${activeSources.size}"
+            )
+
         } catch (e: Throwable) {
             showToast(context, "Error en el escáner: ${e.message}")
         }
@@ -88,13 +109,44 @@ object ExtensionLoader {
 
         try {
             val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                packageManager.getApplicationInfo(pkgName, PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong()))
+                packageManager.getApplicationInfo(
+                    pkgName,
+                    PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong())
+                )
             } else {
                 packageManager.getApplicationInfo(pkgName, PackageManager.GET_META_DATA)
             }
 
-            var sourceClassName = appInfo.metaData?.getString("tachiyomi.extension.class")
-            if (sourceClassName == null) return emptyList()
+            // 🔥 MAGIA NEGRA: Buscamos la clase sin depender de la metadata
+            var sourceClassName: String? = null
+
+            // 1. Intentamos las llaves clásicas
+            if (appInfo.metaData != null) {
+                for (key in appInfo.metaData.keySet()) {
+                    if (key.contains("extension.class", ignoreCase = true)) {
+                        sourceClassName = appInfo.metaData.getString(key)
+                        break
+                    }
+                }
+            }
+
+            // 2. Si falla, asumimos el nombre de la clase basado en el paquete (convención típica)
+            if (sourceClassName == null) {
+                val parts = pkgName.split(".")
+                if (parts.size >= 2) {
+                    val lang = parts[parts.size - 2]
+                    val name = parts.last()
+                    // Ej: eu.kanade.tachiyomi.animeextension.es.animelatino -> ...AnimeLatino
+                    val camelCaseName = name.replaceFirstChar { it.uppercase() }
+                    sourceClassName = "$pkgName.$camelCaseName"
+                    android.util.Log.w("ShioriApp", "Metadata nula. Intentando adivinar clase: $sourceClassName")
+                }
+            }
+
+            if (sourceClassName == null) {
+                android.util.Log.w("ShioriApp", "Imposible determinar la clase para $pkgName")
+                return emptyList()
+            }
 
             if (sourceClassName.startsWith(".")) {
                 sourceClassName = pkgName + sourceClassName
@@ -109,77 +161,47 @@ object ExtensionLoader {
             val sourceClass = Class.forName(sourceClassName, false, classLoader)
             val sourceInstance = sourceClass.newInstance()
 
-            if (sourceInstance is eu.kanade.tachiyomi.source.SourceFactory) {
-                val sources = sourceInstance.createSources()
+            val isFactory = try {
+                sourceClass.getMethod("createSources") != null
+            } catch (e: NoSuchMethodException) {
+                false
+            }
+
+            if (isFactory) {
+                val createSourcesMethod = sourceClass.getMethod("createSources")
+                val sources =
+                    createSourcesMethod.invoke(sourceInstance) as? List<*> ?: emptyList<Any>()
+
                 for (source in sources) {
-                    val adapter = SourceAdapter(source, pkgName, packageManager, appInfo)
-                    generatedSources.add(adapter)
-                    android.util.Log.d("ShioriApp", "🌍 Fábrica generó: ${adapter.name} (${source.lang})")
-
-                    // 🔬 DIAGNÓSTICO: solo para MangaNoSekai
-                    if (adapter.name.contains("Sekai", ignoreCase = true) ||
-                        adapter.name.contains("Nosek", ignoreCase = true) ||
-                        pkgName.contains("sekai", ignoreCase = true)) {
-
-                        android.util.Log.e("SHIORI_DIAG", "==============================================")
-                        android.util.Log.e("SHIORI_DIAG", "🔬 DIAGNÓSTICO de ${adapter.name}")
-                        android.util.Log.e("SHIORI_DIAG", "📦 Paquete:     $pkgName")
-                        android.util.Log.e("SHIORI_DIAG", "🏷️  Label APK:  ${packageManager.getApplicationLabel(appInfo)}")
-                        android.util.Log.e("SHIORI_DIAG", "📌 Clase:       $sourceClassName")
-                        android.util.Log.e("SHIORI_DIAG", "🌐 Lang:        ${adapter.lang}")
-                        android.util.Log.e("SHIORI_DIAG", "🔑 ID:          ${adapter.id}")
-                        android.util.Log.e("SHIORI_DIAG", "--- Métodos relacionados con búsqueda ---")
-                        source.javaClass.methods
-                            .filter {
-                                it.name.contains("search", ignoreCase = true) ||
-                                        it.name.contains("Search", ignoreCase = true)
-                            }
-                            .forEach {
-                                android.util.Log.e("SHIORI_DIAG", "   🔧 ${it.name} | params: ${it.parameterCount} | tipos: ${it.parameterTypes.map { p -> p.simpleName }}")
-                            }
+                    if (source != null) {
+                        val adapter = SourceAdapter(source, pkgName, packageManager, appInfo)
+                        generatedSources.add(adapter)
+                        android.util.Log.d(
+                            "ShioriApp",
+                            "🌍 Fábrica generó: ${adapter.name} (${adapter.lang})"
+                        )
                     }
                 }
-            } else if (sourceInstance is eu.kanade.tachiyomi.source.Source) {
+            } else {
                 val adapter = SourceAdapter(sourceInstance, pkgName, packageManager, appInfo)
                 generatedSources.add(adapter)
-                android.util.Log.d("ShioriApp", "📄 Extensión cargada: ${adapter.name} (${sourceInstance.lang})")
-
-                // 🔬 DIAGNÓSTICO: solo para MangaNoSekai
-                if (adapter.name.contains("Sekai", ignoreCase = true) ||
-                    adapter.name.contains("Nosek", ignoreCase = true) ||
-                    pkgName.contains("sekai", ignoreCase = true)) {
-
-                    android.util.Log.e("SHIORI_DIAG", "==============================================")
-                    android.util.Log.e("SHIORI_DIAG", "🔬 DIAGNÓSTICO de ${adapter.name}")
-                    android.util.Log.e("SHIORI_DIAG", "📦 Paquete:     $pkgName")
-                    android.util.Log.e("SHIORI_DIAG", "🏷️  Label APK:  ${packageManager.getApplicationLabel(appInfo)}")
-                    android.util.Log.e("SHIORI_DIAG", "📌 Clase:       $sourceClassName")
-                    android.util.Log.e("SHIORI_DIAG", "🌐 Lang:        ${adapter.lang}")
-                    android.util.Log.e("SHIORI_DIAG", "🔑 ID:          ${adapter.id}")
-                    android.util.Log.e("SHIORI_DIAG", "--- Métodos relacionados con búsqueda ---")
-                    sourceInstance.javaClass.methods
-                        .filter {
-                            it.name.contains("search", ignoreCase = true) ||
-                                    it.name.contains("Search", ignoreCase = true)
-                        }
-                        .forEach {
-                            android.util.Log.e("SHIORI_DIAG", "   🔧 ${it.name} | params: ${it.parameterCount} | tipos: ${it.parameterTypes.map { p -> p.simpleName }}")
-                        }
-                }
-            } else {
-                android.util.Log.w("ShioriApp", "La clase no es ni Source ni SourceFactory")
+                android.util.Log.d(
+                    "ShioriApp",
+                    "📄 Extensión cargada: ${adapter.name} (${adapter.lang})"
+                )
             }
 
             return generatedSources
 
         } catch (e: Throwable) {
-            android.util.Log.e("ShioriApp", "💀 ERROR AL CARGAR EXTENSIÓN:", e)
+            android.util.Log.e("ShioriApp", "💀 ERROR AL CARGAR EXTENSIÓN: $pkgName", e)
             return emptyList()
         }
     }
+
     private fun showToast(context: Context, message: String) {
-        Handler(Looper.getMainLooper()).post {
-            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
@@ -196,7 +218,10 @@ class SourceAdapter(
 ) : Source {
 
     override val name: String
-        get() = packageManager.getApplicationLabel(appInfo).toString().removePrefix("Tachiyomi: ").trim()
+        get() = packageManager.getApplicationLabel(appInfo).toString()
+            .removePrefix("Tachiyomi: ")
+            .removePrefix("Aniyomi: ")
+            .trim()
 
     override val lang: String
         get() = getPropertyValue("lang") as? String ?: "unknown"

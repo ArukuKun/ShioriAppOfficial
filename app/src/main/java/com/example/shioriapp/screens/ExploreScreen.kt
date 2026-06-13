@@ -366,7 +366,12 @@ private fun getExtensionIcon(packageManager: PackageManager, sourceName: String)
     return try {
         val packages = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
         val extensionPackage = packages.firstOrNull { appInfo ->
-            (appInfo.packageName.contains("eu.kanade.tachiyomi.extension") || appInfo.packageName.contains("keiyoushin.extension")) &&
+            val pkgName = appInfo.packageName
+            // ¡AQUÍ ESTÁ LA MAGIA! Agregamos los identificadores de Aniyomi y Anime
+            (pkgName.contains("eu.kanade.tachiyomi.extension") ||
+                    pkgName.contains("eu.kanade.tachiyomi.animeextension") ||
+                    pkgName.contains("aniyomi") ||
+                    pkgName.contains("keiyoushin.extension")) &&
                     packageManager.getApplicationLabel(appInfo).toString().contains(sourceName, ignoreCase = true)
         }
         extensionPackage?.loadIcon(packageManager)
