@@ -40,9 +40,12 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.foundation.shape.CircleShape
+import com.example.shioriapp.core.media.SpotifyManager
+import androidx.compose.runtime.collectAsState
 
 @Composable
 fun ReaderScreen(
@@ -53,6 +56,12 @@ fun ReaderScreen(
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     var showOverlay by remember { mutableStateOf(false) }
+
+    // 🔥 INSTANCIA DEL MANAGER DE SPOTIFY
+    val spotifyManager = remember { SpotifyManager(context) }
+    val currentTrack by spotifyManager.currentTrack.collectAsState(initial = null)
+    val isMusicPaused by spotifyManager.isPaused.collectAsState(initial = true)
+    val isSpotifyConnected by spotifyManager.isConnected.collectAsState(initial = false)
 
     var showSpotifySheet by remember { mutableStateOf(false) }
     @OptIn(ExperimentalMaterial3Api::class)
@@ -73,22 +82,26 @@ fun ReaderScreen(
     val imageLoader = context.imageLoader
     val currentFirstVisible by remember { derivedStateOf { listState.firstVisibleItemIndex } }
 
-    // CONFIGURACIÓN INMERSIVA INICIAL
+    // CONFIGURACIÓN INMERSIVA INICIAL Y CICLO DE VIDA DE SPOTIFY
     DisposableEffect(Unit) {
+        // Conectar a Spotify apenas se abre el lector
+        spotifyManager.connect()
+
         window?.let {
             it.statusBarColor = android.graphics.Color.TRANSPARENT
             it.navigationBarColor = android.graphics.Color.TRANSPARENT
         }
         controller?.let {
             it.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-
             it.isAppearanceLightStatusBars = false
             it.isAppearanceLightNavigationBars = false
-
             it.hide(WindowInsetsCompat.Type.systemBars())
         }
 
         onDispose {
+            // Desconectar Spotify para no dejar procesos colgados
+            spotifyManager.disconnect()
+
             viewModel.clearReader()
             ReaderDataCache.currentChapter = null
             ReaderDataCache.chapters = emptyList()
@@ -402,15 +415,15 @@ fun ReaderScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
-                                    text = "Reproduciendo OST",
-                                    color = Color.White,
+                                    text = if (isSpotifyConnected) "Reproduciendo OST" else "Conectando a Spotify...",
+                                    color = if (isSpotifyConnected) Color(0xFF1DB954) else Color.Gray,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp
                                 )
 
                                 Spacer(modifier = Modifier.height(24.dp))
 
-                                // Portada del Álbum (Diseño temporal)
+                                // Portada del Álbum (Placeholder temporal)
                                 Box(
                                     modifier = Modifier
                                         .size(200.dp)
@@ -422,8 +435,20 @@ fun ReaderScreen(
 
                                 Spacer(modifier = Modifier.height(24.dp))
 
-                                Text("Gurenge (Demon Slayer)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp, maxLines = 1)
-                                Text("LiSA", color = Color(0xFFB3B3B3), fontSize = 16.sp)
+                                // 🔥 TEXTOS DINÁMICOS DESDE SPOTIFY
+                                Text(
+                                    text = currentTrack?.name ?: "Sin canción",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 22.sp,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = currentTrack?.artist?.name ?: "Artista desconocido",
+                                    color = Color(0xFFB3B3B3),
+                                    fontSize = 16.sp,
+                                    maxLines = 1
+                                )
 
                                 Spacer(modifier = Modifier.height(32.dp))
 
@@ -432,22 +457,32 @@ fun ReaderScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    IconButton(onClick = { /* TODO: Canción Anterior */ }) {
-                                        Icon(Icons.Default.SkipPrevious, contentDescription = "Anterior", tint = Color.White, modifier = Modifier.size(42.dp))
+                                    // 🔥 BOTÓN ANTERIOR
+                                    IconButton(
+                                        onClick = { spotifyManager.skipPrevious() },
+                                        enabled = isSpotifyConnected
+                                    ) {
+                                        Icon(Icons.Default.SkipPrevious, contentDescription = "Anterior", tint = if (isSpotifyConnected) Color.White else Color.Gray, modifier = Modifier.size(42.dp))
                                     }
 
+                                    // 🔥 BOTÓN PLAY / PAUSA DINÁMICO
                                     Box(
                                         modifier = Modifier
                                             .size(64.dp)
-                                            .background(Color(0xFF1DB954), CircleShape)
-                                            .clickable { /* TODO: Play/Pausa */ },
+                                            .background(if (isSpotifyConnected) Color(0xFF1DB954) else Color.DarkGray, CircleShape)
+                                            .clickable(enabled = isSpotifyConnected) { spotifyManager.playPause() },
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(Icons.Default.PlayArrow, contentDescription = "Play", tint = Color.Black, modifier = Modifier.size(42.dp))
+                                        val icon = if (isMusicPaused) Icons.Default.PlayArrow else Icons.Default.Pause
+                                        Icon(icon, contentDescription = "Play/Pause", tint = Color.Black, modifier = Modifier.size(42.dp))
                                     }
 
-                                    IconButton(onClick = { /* TODO: Canción Siguiente */ }) {
-                                        Icon(Icons.Default.SkipNext, contentDescription = "Siguiente", tint = Color.White, modifier = Modifier.size(42.dp))
+                                    // 🔥 BOTÓN SIGUIENTE
+                                    IconButton(
+                                        onClick = { spotifyManager.skipNext() },
+                                        enabled = isSpotifyConnected
+                                    ) {
+                                        Icon(Icons.Default.SkipNext, contentDescription = "Siguiente", tint = if (isSpotifyConnected) Color.White else Color.Gray, modifier = Modifier.size(42.dp))
                                     }
                                 }
 
@@ -492,4 +527,3 @@ fun cleanChapterName(rawName: String): String {
 
     return rawName.split("-", ":").first().trim()
 }
-

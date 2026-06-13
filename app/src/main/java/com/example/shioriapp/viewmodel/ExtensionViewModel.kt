@@ -41,43 +41,40 @@ class ExtensionViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun loadExtensions(context: Context) {
         viewModelScope.launch {
-            _isLoading.value = true
-            Log.d("SHIORI_DEBUG", "=== INICIANDO CARGA DE EXTENSIONES ===")
-            try {
-                val savedRepos = dao.getAllRepositories().first()
-                Log.d("SHIORI_DEBUG", "Paso 1: Repositorios leídos de la base de datos: ${savedRepos.size}")
+            // 🔥 CAMBIO CLAVE: Usamos collect para escuchar la base de datos en TIEMPO REAL
+            dao.getAllRepositories().collect { savedRepos ->
+                _isLoading.value = true
+                Log.d("SHIORI_DEBUG", "Repositorios detectados en la BD: ${savedRepos.size}")
 
                 if (savedRepos.isEmpty()) {
-                    Log.w("SHIORI_DEBUG", "ALERTA: La base de datos dice que no hay repositorios guardados. ¿Agregaste el link en la otra pantalla?")
+                    Log.w("SHIORI_DEBUG", "No hay repositorios. Ve a la pantalla de repositorios y agrega uno.")
+                    _extensions.value = emptyList() // Limpia la lista
+                    _isLoading.value = false
+                    return@collect // Corta esta ejecución, pero sigue escuchando
                 }
 
                 val allExtensions = mutableListOf<ExtensionInfo>()
 
+                // 2. Busca las extensiones en los links que encontraste
                 for (repo in savedRepos) {
                     try {
+                        Log.d("SHIORI_DEBUG", "Descargando desde: ${repo.url}")
                         val listFromInternet = RetrofitClient.api.getExtensions(repo.url)
                         val baseUrl = repo.url.substringBeforeLast("index.min.json")
                         listFromInternet.forEach { it.repoBaseUrl = baseUrl }
-
                         allExtensions.addAll(listFromInternet)
                     } catch (e: Exception) {
-                        Log.e("SHIORI_DEBUG", "Error descargando de [${repo.name}]: ${e.message}")
+                        Log.e("SHIORI_DEBUG", "Error con el repo ${repo.name}: ${e.message}")
                     }
                 }
 
+                // 3. Filtra y muestra
                 val uniqueExtensions = allExtensions.distinctBy { it.pkg }
-                Log.d("SHIORI_DEBUG", "Paso 4: Total de extensiones únicas para mostrar: ${uniqueExtensions.size}")
-
+                Log.d("SHIORI_DEBUG", "¡Éxito! Mostrando ${uniqueExtensions.size} extensiones.")
                 _extensions.value = uniqueExtensions
                 refreshStates(context, uniqueExtensions)
 
-            } catch (e: Exception) {
-                Log.e("SHIORI_DEBUG", "ERROR FATAL en loadExtensions: ${e.message}")
-                e.printStackTrace()
-                _errorMessage.value = "Error al cargar extensiones: ${e.message}"
-            } finally {
                 _isLoading.value = false
-                Log.d("SHIORI_DEBUG", "=== FIN DE LA CARGA DE EXTENSIONES ===")
             }
         }
     }

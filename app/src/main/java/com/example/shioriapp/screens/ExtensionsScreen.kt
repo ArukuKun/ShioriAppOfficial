@@ -1,5 +1,6 @@
 package com.example.shioriapp.screens
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -37,8 +38,9 @@ enum class NsfwFilterState { SHOW_ALL, ONLY_NSFW, HIDE_NSFW }
 @Composable
 fun ExtensionsScreen(
     onBack: () -> Unit,
-    viewModel: ExtensionViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
-) {
+    viewModel: ExtensionViewModel = viewModel(),
+    context: Context = LocalContext.current
+    ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
