@@ -1,4 +1,4 @@
-    package com.example.shioriapp.navigation
+package com.example.shioriapp.navigation
 
     import android.content.Context
     import android.content.Intent
@@ -349,7 +349,7 @@
                 ) {
                     when (currentRoute) {
                         Routes.HOME -> {
-                            val logoRes = if (isDarkTheme) R.drawable.ic_shiori_white else R.drawable.ic_shiori_black
+                            val logoRes = if (isDarkTheme) R.drawable.ic_shiori_black else R.drawable.ic_shiori_white
                             Image(
                                 painter = painterResource(id = logoRes),
                                 contentDescription = null,

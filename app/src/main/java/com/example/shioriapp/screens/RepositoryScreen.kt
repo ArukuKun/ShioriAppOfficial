@@ -19,30 +19,27 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.shioriapp.data.repository.RepositoryEntity
+import com.example.shioriapp.viewmodel.RepositoryViewModel
 import java.util.UUID
 
-data class RepositoryItem(
-    val id: String = UUID.randomUUID().toString(),
-    val name: String,
-    val url: String,
-    val isDefault: Boolean = false
-)
+// IMPORTANTE: Si tus archivos de base de datos están en otra carpeta (ej. 'data'),
+// asegúrate de descomentar o agregar estos imports según la estructura de tu proyecto:
+// import com.example.shioriapp.data.RepositoryEntity
+// import com.example.shioriapp.data.RepositoryViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RepositoryScreen(onBack: () -> Unit) {
-    val repos = remember {
-        mutableStateListOf(
-            RepositoryItem(
-                name = "Keiyoushin",
-                url = "https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json",
-                isDefault = true
-            )
-        )
-    }
+fun RepositoryScreen(
+    onBack: () -> Unit,
+    viewModel: RepositoryViewModel = viewModel() // <-- Conectamos el motor de la base de datos
+) {
+    // Escuchamos la base de datos en tiempo real
+    val repos by viewModel.repositories.collectAsState(initial = emptyList())
 
     var showDialog by remember { mutableStateOf(false) }
-    var editingRepo by remember { mutableStateOf<RepositoryItem?>(null) }
+    var editingRepo by remember { mutableStateOf<RepositoryEntity?>(null) }
     var tempName by remember { mutableStateOf("") }
     var tempUrl by remember { mutableStateOf("") }
 
@@ -97,7 +94,8 @@ fun RepositoryScreen(onBack: () -> Unit) {
                             tempUrl = it.url
                             showDialog = true
                         },
-                        onDelete = { repos.remove(it) }
+                        // Borramos directamente desde el ViewModel
+                        onDelete = { viewModel.deleteRepository(it) }
                     )
                 }
             }
@@ -135,14 +133,19 @@ fun RepositoryScreen(onBack: () -> Unit) {
                 Button(
                     onClick = {
                         if (tempName.isNotBlank() && tempUrl.isNotBlank()) {
-                            if (editingRepo == null) {
-                                repos.add(RepositoryItem(name = tempName, url = tempUrl))
-                            } else {
-                                val index = repos.indexOf(editingRepo)
-                                if (index != -1) {
-                                    repos[index] = editingRepo!!.copy(name = tempName, url = tempUrl)
-                                }
-                            }
+                            // Mantenemos el ID original si estamos editando, o creamos uno nuevo
+                            val idToSave = editingRepo?.id ?: UUID.randomUUID().toString()
+                            val isDefaultStatus = editingRepo?.isDefault ?: false
+
+                            // Guardamos en Room
+                            viewModel.insertRepository(
+                                RepositoryEntity(
+                                    id = idToSave,
+                                    name = tempName,
+                                    url = tempUrl,
+                                    isDefault = isDefaultStatus
+                                )
+                            )
                             showDialog = false
                         }
                     }
@@ -161,9 +164,9 @@ fun RepositoryScreen(onBack: () -> Unit) {
 
 @Composable
 fun RepositoryCard(
-    repo: RepositoryItem,
-    onEdit: (RepositoryItem) -> Unit,
-    onDelete: (RepositoryItem) -> Unit
+    repo: RepositoryEntity, // Usamos la clase Entity de Room en lugar de la local
+    onEdit: (RepositoryEntity) -> Unit,
+    onDelete: (RepositoryEntity) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -179,7 +182,6 @@ fun RepositoryCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Textos (Nombre y Link)
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -231,7 +233,7 @@ fun RepositoryCard(
                 }
                 IconButton(
                     onClick = { onDelete(repo) },
-                    enabled = !repo.isDefault // Se desactiva si es Keiyoushin
+                    enabled = !repo.isDefault
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
