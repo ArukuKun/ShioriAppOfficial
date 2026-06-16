@@ -1,5 +1,8 @@
 package com.example.shioriapp.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -27,6 +30,8 @@ import androidx.navigation.NavController
 import com.example.shioriapp.domain.model.Chat
 import com.example.shioriapp.domain.model.UserProfile
 import com.example.shioriapp.viewmodel.ChatListViewModel
+
+import coil.compose.AsyncImage
 
 @Composable
 fun MensajeriaScreen(
@@ -60,144 +65,211 @@ fun MensajeriaAuthenticatedScreen(
     val friends by viewModel.friends.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
+    var showSearch by remember { mutableStateOf(false) }
+    var showIdInputDialog by remember { mutableStateOf(false) }
+    var manualIdInput by remember { mutableStateOf("") }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-            .padding(top = 56.dp) // 🔥 Añadido para evitar colisión con la MainTopAppBar
-    ) {
-        // Buscador superior
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = {
-                searchQuery = it
-                viewModel.searchUsers(it)
+    if (showIdInputDialog) {
+        AlertDialog(
+            onDismissRequest = { showIdInputDialog = false },
+            title = { Text("Añadir amigo por ID") },
+            text = {
+                OutlinedTextField(
+                    value = manualIdInput,
+                    onValueChange = { manualIdInput = it },
+                    label = { Text("ID de Usuario") },
+                    placeholder = { Text("Pega el ID aquí...") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
             },
-            placeholder = { Text("Buscar amigos...") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Buscar") },
-            trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { searchQuery = ""; viewModel.searchUsers("") }) {
-                        Icon(Icons.Default.Clear, contentDescription = "Limpiar")
+            confirmButton = {
+                Button(onClick = {
+                    if (manualIdInput.isNotBlank()) {
+                        navController.navigate("external_profile/$manualIdInput")
+                        showIdInputDialog = false
+                        manualIdInput = ""
                     }
-                }
+                }) { Text("Buscar") }
             },
-            shape = RoundedCornerShape(24.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                unfocusedBorderColor = Color.Transparent,
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            ),
-            singleLine = true
+            dismissButton = {
+                TextButton(onClick = { showIdInputDialog = false }) { Text("Cancelar") }
+            }
         )
+    }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                // 🔥 Empujamos el contenido hacia abajo para que la barra superior no lo tape
+                .statusBarsPadding()
+                .padding(top = 64.dp)
         ) {
-            if (searchQuery.length >= 2) {
-                item {
-                    Text(
-                        text = "Resultados de búsqueda",
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                }
-                if (searchResults.isEmpty()) {
-                    item {
-                        Text(
-                            text = "No se encontraron usuarios",
-                            modifier = Modifier.padding(16.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                } else {
-                    items(searchResults) { user ->
-                        UserSearchItem(
-                            user = user,
-                            onAddFriendClick = { viewModel.sendFriendRequest(user.userId) }
-                        )
-                    }
-                }
-            }
-            else {
-                if (friendRequests.isNotEmpty()) {
-                    item {
-                        Text(
-                            text = "Nuevas Solicitudes (${friendRequests.size})",
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
-                    }
-                    items(friendRequests) { reqUser ->
-                        FriendRequestItem(
-                            user = reqUser,
-                            onAcceptClick = { viewModel.acceptFriendRequest(reqUser.userId) }
-                        )
-                    }
-                    item { Spacer(modifier = Modifier.height(16.dp)) }
-                }
-
-                // Sección: Mis Amigos (Para iniciar chat rápido)
-                if (friends.isNotEmpty()) {
-                    item {
-                        Text(
-                            text = "Mis Amigos",
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
-                    }
-                    items(friends) { friend ->
-                        FriendItem(
-                            user = friend,
-                            onChatClick = {
-                                val existingChatId = viewModel.getChatIdWithFriend(friend.userId)
-                                if (existingChatId != null) {
-                                    navController.navigate("chat_room/$existingChatId")
-                                } else {
-                                    // Lógica para crear un chat nuevo y luego navegar
-                                    // navController.navigate("chat_room/nuevo_chat_${friend.userId}")
-                                }
+            AnimatedVisibility(
+                visible = showSearch,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = {
+                        searchQuery = it
+                        viewModel.searchUsers(it)
+                    },
+                    placeholder = { Text("Buscar amigos...") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Buscar") },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = ""; viewModel.searchUsers("") }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Limpiar")
                             }
-                        )
-                    }
-                    item { Spacer(modifier = Modifier.height(16.dp)) }
-                }
-
-                // Sección: Mis Chats Activos
-                item {
-                    Text(
-                        text = "Mensajes",
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-                }
-
-                if (chats.isEmpty() && friends.isEmpty()) {
-                    item {
-                        EmptyChatState()
-                    }
-                } else {
-                    items(chats) { chat ->
-                        ChatItem(chat = chat, onClick = {
-                            navController.navigate("chat_room/${chat.chatId}") // Ruta ficticia por ahora
-                        })
-                    }
-                }
+                        }
+                    },
+                    shape = RoundedCornerShape(24.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedBorderColor = Color.Transparent,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    singleLine = true
+                )
             }
 
-            // Espacio al final para que la barra inferior flotante no tape el último item
-            item { Spacer(modifier = Modifier.height(80.dp)) }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                if (showSearch && searchQuery.length >= 2) {
+                    item {
+                        Text(
+                            text = "Resultados de búsqueda",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
+                    if (searchResults.isEmpty()) {
+                        item {
+                            Text(
+                                text = "No se encontraron usuarios",
+                                modifier = Modifier.padding(16.dp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        items(searchResults) { user ->
+                            UserSearchItem(
+                                user = user,
+                                onAddFriendClick = { viewModel.sendFriendRequest(user.userId) }
+                            )
+                        }
+                    }
+                }
+                else {
+                    if (friendRequests.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "Nuevas Solicitudes (${friendRequests.size})",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        }
+                        items(friendRequests) { reqUser ->
+                            FriendRequestItem(
+                                user = reqUser,
+                                onAcceptClick = { viewModel.acceptFriendRequest(reqUser.userId) }
+                            )
+                        }
+                        item { Spacer(modifier = Modifier.height(16.dp)) }
+                    }
+
+                    if (friends.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "Mis Amigos",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        }
+                        items(friends) { friend ->
+                            FriendItem(
+                                user = friend,
+                                onChatClick = {
+                                    val existingChatId = viewModel.getChatIdWithFriend(friend.userId)
+                                    if (existingChatId != null) {
+                                        navController.navigate("chat_room/$existingChatId")
+                                    }
+                                }
+                            )
+                        }
+                        item { Spacer(modifier = Modifier.height(16.dp)) }
+                    }
+
+                    item {
+                        Text(
+                            text = "Mensajes",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
+
+                    if (chats.isEmpty() && friends.isEmpty()) {
+                        item { EmptyChatState() }
+                    } else {
+                        items(chats) { chat ->
+                            ChatItem(chat = chat, onClick = {
+                                navController.navigate("chat_room/${chat.chatId}")
+                            })
+                        }
+                    }
+                }
+
+                item { Spacer(modifier = Modifier.height(150.dp)) }
+            }
+        }
+
+        // 🔥 Botón Flotante con padding ajustado
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 140.dp),
+            horizontalAlignment = Alignment.End
+        ) {
+            SmallFloatingActionButton(
+                onClick = { showIdInputDialog = true },
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+            ) {
+                Icon(Icons.Default.Link, contentDescription = "Añadir por ID")
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+
+            FloatingActionButton(
+                onClick = {
+                    showSearch = !showSearch
+                    if (!showSearch) {
+                        searchQuery = ""
+                        viewModel.searchUsers("")
+                    }
+                },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ) {
+                Icon(
+                    imageVector = if (showSearch) Icons.Default.Close else Icons.Default.PersonAdd,
+                    contentDescription = if (showSearch) "Cerrar búsqueda" else "Añadir amigo"
+                )
+            }
         }
     }
 }
@@ -212,15 +284,16 @@ fun UserSearchItem(user: UserProfile, onAddFriendClick: () -> Unit) {
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
+        AsyncImage(
+            model = user.photoUrl,
+            contentDescription = null,
             modifier = Modifier
                 .size(48.dp)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            error = androidx.compose.ui.res.painterResource(id = com.example.shioriapp.R.drawable.ic_shiori_black) // Ajusta el placeholder si es necesario
+        )
         Spacer(modifier = Modifier.width(12.dp))
         Text(
             text = user.displayName ?: "Usuario desconocido",
@@ -242,10 +315,12 @@ fun FriendRequestItem(user: UserProfile, onAcceptClick: () -> Unit) {
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
+        AsyncImage(
+            model = user.photoUrl,
+            contentDescription = null,
             modifier = Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center
-        ) { Icon(Icons.Default.Person, contentDescription = null) }
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+        )
 
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -271,10 +346,12 @@ fun FriendItem(user: UserProfile, onChatClick: () -> Unit) {
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
+        AsyncImage(
+            model = user.photoUrl,
+            contentDescription = null,
             modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center
-        ) { Icon(Icons.Default.Person, contentDescription = null) }
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+        )
 
         Spacer(modifier = Modifier.width(12.dp))
         Text(text = user.displayName ?: "Amigo", fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
@@ -291,16 +368,18 @@ fun ChatItem(chat: Chat, onClick: () -> Unit) {
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
+        AsyncImage(
+            model = chat.otherUserPhotoUrl,
+            contentDescription = null,
             modifier = Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center
-        ) { Icon(Icons.Default.Group, contentDescription = null) }
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+        )
 
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = "Chat ID: ${chat.chatId.take(5)}...", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(text = chat.otherUserName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             Text(
-                text = "Toca para abrir la conversación",
+                text = chat.lastMessage ?: "Toca para abrir la conversación",
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -325,7 +404,7 @@ fun EmptyChatState() {
         Spacer(modifier = Modifier.height(16.dp))
         Text(text = "Aún no tienes mensajes", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Text(
-            text = "Busca amigos en la barra superior para empezar a chatear.",
+            text = "Busca amigos tocando el botón de abajo para empezar a chatear.",
             fontSize = 14.sp,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -339,7 +418,7 @@ fun MensajeriaUnauthenticatedScreen() {
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .padding(top = 56.dp) // 🔥 Añadido para evitar colisión con la MainTopAppBar
+            .padding(top = 64.dp)
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center

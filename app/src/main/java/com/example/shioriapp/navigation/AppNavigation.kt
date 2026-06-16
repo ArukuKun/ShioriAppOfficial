@@ -45,6 +45,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 import com.example.shioriapp.R
 import com.example.shioriapp.data.repository.LibraryManager
 import com.example.shioriapp.domain.model.ChapterInfo
@@ -52,7 +53,6 @@ import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.viewmodel.AuthViewModel
 import com.example.shioriapp.screens.*
 import com.example.shioriapp.viewmodel.ExploreViewModel
-import androidx.compose.runtime.collectAsState
 import org.json.JSONArray
 import java.io.File
 import java.net.URLDecoder
@@ -75,6 +75,8 @@ object Routes {
     const val LOGIN = "login"
     const val SETTINGS = "settings_screen"
     const val REPOSITORY = "repository_screen"
+    const val PROFILE = "profile"
+    const val EXTERNAL_PROFILE = "external_profile/{userId}"
 }
 
 object ReaderDataCache {
@@ -258,6 +260,13 @@ fun AppNavigation() {
             )
         }
 
+        composable(Routes.PROFILE) {
+            ProfileScreen(
+                authViewModel = authViewModel,
+                onBack = { rootNavController.popBackStack() }
+            )
+        }
+
         composable(Routes.SEARCH) {
             SearchScreen(
                 onBack = { rootNavController.popBackStack() },
@@ -326,6 +335,18 @@ fun AppNavigation() {
                 navController = rootNavController
             )
         }
+
+        composable(
+            route = Routes.EXTERNAL_PROFILE,
+            arguments = listOf(navArgument("userId") { type = NavType.StringType }),
+            deepLinks = listOf(navDeepLink { uriPattern = "shioriapp://user/{userId}" })
+        ) { backStackEntry ->
+            val userId = backStackEntry.arguments?.getString("userId") ?: ""
+            ExternalProfileScreen(
+                userId = userId,
+                onBack = { rootNavController.popBackStack() }
+            )
+        }
     }
 }
 
@@ -364,16 +385,13 @@ fun MainTopAppBar(
                         Image(
                             painter = painterResource(id = logoRes),
                             contentDescription = null,
-                            modifier = Modifier.height(28.dp)
+                            modifier = Modifier.height(42.dp)
                         )
                     }
                     Routes.EXPLORE -> Text("Explorar", fontWeight = FontWeight.Bold)
                     Routes.MENSAJERIA -> Text(if (showAddFriend) "Buscar Amigos" else "Mensajería", fontWeight = FontWeight.Bold)
                     else -> Text("Shiori", fontWeight = FontWeight.Bold)
                 }
-                Routes.EXPLORE -> Text("Explorar", fontWeight = FontWeight.Bold)
-                Routes.MENSAJERIA -> Text(if (showAddFriend) "Buscar Amigos" else "Mensajería", fontWeight = FontWeight.Bold)
-                else -> Text("Shiori", fontWeight = FontWeight.Bold)
             }
         },
         navigationIcon = {
@@ -401,14 +419,6 @@ fun MainTopAppBar(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(horizontal = if (isCollapsed) 4.dp else 0.dp)
                 ) {
-                    if (currentRoute == Routes.MENSAJERIA) {
-                        IconButton(onClick = onAddFriendClick) {
-                            Icon(
-                                imageVector = if (showAddFriend) Icons.Default.Close else Icons.Default.PersonAdd,
-                                contentDescription = "Amigos"
-                            )
-                        }
-                    }
                     IconButton(onClick = onSearchClick) {
                         Icon(Icons.Default.Search, "Buscar")
                     }
@@ -417,14 +427,8 @@ fun MainTopAppBar(
                     }
                 }
             }
-            IconButton(onClick = onSearchClick) {
-                Icon(Icons.Default.Search, "Buscar")
-            }
-            IconButton(onClick = onNotificationsClick) {
-                Icon(Icons.Default.Notifications, "Notificaciones")
-            }
         },
-        colors = TopAppBarDefaults.topAppBarColors(
+        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
             containerColor = Color.Transparent,
             titleContentColor = MaterialTheme.colorScheme.onSurface,
             actionIconContentColor = MaterialTheme.colorScheme.onSurface,
@@ -532,7 +536,9 @@ fun MainTabsScreen(
         NavHost(
             navController = tabsNavController,
             startDestination = Routes.HOME,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 20.dp),
             enterTransition = { fadeIn(tween(200)) },
             exitTransition = { fadeOut(tween(200)) }
         ) {
@@ -634,7 +640,8 @@ fun MainTabsScreen(
                     onNavigateToStorage = { rootNavController.navigate(Routes.STORAGE_SETTINGS) },
                     onNavigateToRepository = { rootNavController.navigate(Routes.REPOSITORY) },
                     onNavigateToSettings = { rootNavController.navigate(Routes.SETTINGS) },
-                    onNavigateToLogin = { rootNavController.navigate(Routes.LOGIN) }
+                    onNavigateToLogin = { rootNavController.navigate(Routes.LOGIN) },
+                    onNavigateToProfile = { rootNavController.navigate(Routes.PROFILE) }
                 )
             }
         }
@@ -746,8 +753,6 @@ fun MainTabsScreen(
                                     color = contentColor
                                 )
                             }
-                        } else if (route == Routes.EXPLORE) {
-                            exploreViewModel.toggleSourcesView(true)
                         }
                     }
                 }

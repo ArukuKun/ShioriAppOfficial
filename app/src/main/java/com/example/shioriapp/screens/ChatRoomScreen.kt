@@ -31,7 +31,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.shioriapp.domain.model.Message
 import com.example.shioriapp.viewmodel.ChatViewModel
-// import coil.compose.AsyncImage // <-- Descomenta esto si usas la librería Coil para cargar las imágenes de internet
+import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,9 +52,21 @@ fun ChatRoomScreen(
 
     val messages by viewModel.messages.collectAsState()
     val isSending by viewModel.isSending.collectAsState()
+    val typingUsers by viewModel.typingUsers.collectAsState()
 
     var messageText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+
+    // Detectar cuando el usuario está escribiendo
+    LaunchedEffect(messageText) {
+        if (messageText.isNotBlank()) {
+            viewModel.setTyping(true)
+            delay(3000) // Mantener estado por 3s o hasta que cambie
+            viewModel.setTyping(false)
+        } else {
+            viewModel.setTyping(false)
+        }
+    }
 
     // Selector de imágenes de Android
     val imagePickerLauncher = rememberLauncherForActivityResult(
@@ -71,8 +84,17 @@ fun ChatRoomScreen(
 
     Scaffold(
         topBar = {
+            val otherTyping = typingUsers.filter { it.key != currentUserId && it.value }.isNotEmpty()
+            
             CenterAlignedTopAppBar(
-                title = { Text("Chat", fontWeight = FontWeight.Bold) },
+                title = { 
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Chat", fontWeight = FontWeight.Bold) 
+                        if (otherTyping) {
+                            Text("Escribiendo...", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
@@ -142,23 +164,16 @@ fun MessageBubble(message: Message, isMine: Boolean) {
             Column {
                 // Si el mensaje tiene una imagen
                 if (!message.imageUrl.isNullOrEmpty()) {
-                    /* Descomenta esto cuando tengas la librería Coil instalada para ver las imágenes:
                     AsyncImage(
                         model = message.imageUrl,
                         contentDescription = "Imagen enviada",
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(200.dp)
+                            .heightIn(max = 250.dp)
                             .clip(RoundedCornerShape(8.dp)),
                         contentScale = ContentScale.Crop
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    */
-                    Text(
-                        text = "[Imagen adjunta]",
-                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                        color = if (isMine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
 
                 // Si el mensaje tiene texto

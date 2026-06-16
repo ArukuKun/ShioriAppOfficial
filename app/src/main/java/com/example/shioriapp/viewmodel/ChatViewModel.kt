@@ -10,6 +10,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class ChatViewModel(
@@ -25,11 +26,20 @@ class ChatViewModel(
     private val _isSending = MutableStateFlow(false)
     val isSending: StateFlow<Boolean> = _isSending.asStateFlow()
 
+    private val _typingUsers = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val typingUsers: StateFlow<Map<String, Boolean>> = _typingUsers.asStateFlow()
+
     init {
         viewModelScope.launch {
-            chatRepository.getMessages(chatId).collect { msgs ->
+            chatRepository.getMessages(chatId).collectLatest { msgs ->
                 _messages.value = msgs
                 markAsRead()
+            }
+        }
+
+        viewModelScope.launch {
+            chatRepository.observeTypingStatus(chatId).collectLatest { status ->
+                _typingUsers.value = status
             }
         }
     }
@@ -37,6 +47,12 @@ class ChatViewModel(
     private fun markAsRead() {
         viewModelScope.launch {
             chatRepository.markMessagesAsRead(chatId, currentUserId)
+        }
+    }
+
+    fun setTyping(isTyping: Boolean) {
+        viewModelScope.launch {
+            chatRepository.updateTypingStatus(chatId, currentUserId, isTyping)
         }
     }
 

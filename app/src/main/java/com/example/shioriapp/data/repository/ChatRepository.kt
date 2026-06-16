@@ -163,4 +163,32 @@ class ChatRepository(private val firestore: FirebaseFirestore) {
             Log.e(TAG, "Error marcando mensajes como leídos", e)
         }
     }
+
+    suspend fun updateTypingStatus(chatId: String, userId: String, isTyping: Boolean) {
+        try {
+            val statusRef = firestore.collection("chats").document(chatId)
+                .collection("typingStatus").document(userId)
+            if (isTyping) {
+                statusRef.set(mapOf("isTyping" to true, "timestamp" to FieldValue.serverTimestamp())).await()
+            } else {
+                statusRef.delete().await()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error actualizando estado de escritura", e)
+        }
+    }
+
+    fun observeTypingStatus(chatId: String): Flow<Map<String, Boolean>> = callbackFlow {
+        val subscription = firestore.collection("chats").document(chatId)
+            .collection("typingStatus")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    trySend(emptyMap())
+                    return@addSnapshotListener
+                }
+                val typingMap = snapshot?.documents?.associate { it.id to (it.getBoolean("isTyping") ?: false) } ?: emptyMap()
+                trySend(typingMap)
+            }
+        awaitClose { subscription.remove() }
+    }
 }
