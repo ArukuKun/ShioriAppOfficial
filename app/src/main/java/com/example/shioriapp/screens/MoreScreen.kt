@@ -1,15 +1,14 @@
 package com.example.shioriapp.screens
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,10 +16,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.shioriapp.R
 import com.example.shioriapp.navigation.Routes
 import com.example.shioriapp.viewmodel.AuthViewModel
@@ -44,9 +44,7 @@ fun MoreScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
+            .verticalScroll(scrollState)
     ) {
         // 🔥 SECCIÓN DE PERFIL DE USUARIO
         if (isAuthenticated && userProfile != null) {
@@ -186,7 +184,12 @@ fun MoreScreen(
             onClick = { onNavigateToStorage() }
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+            SettingsItem(
+                icon = Icons.Default.Storage,
+                title = "Almacenamiento",
+                subtitle = "Caché, descargas y base de datos",
+                onClick = onNavigateToStorage
+            )
 
         SettingsSectionTitle(title = "Sistema")
         SettingsItem(
@@ -213,11 +216,12 @@ fun MoreScreen(
 @Composable
 fun SettingsSectionTitle(title: String) {
     Text(
-        text = title.uppercase(),
-        color = MaterialTheme.colorScheme.primary,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.ExtraBold,
-        modifier = Modifier.padding(bottom = 8.dp)
+        text = title,
+        color = Color.White.copy(alpha = 0.5f),
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.sp,
+        modifier = Modifier.padding(top = 28.dp, bottom = 8.dp, start = 12.dp)
     )
 }
 
@@ -226,44 +230,48 @@ fun SettingsItem(
     icon: ImageVector,
     title: String,
     subtitle: String,
-    onClick: () -> Unit = {}
+    onClick: () -> Unit = {},
+    color: Color = MaterialTheme.colorScheme.onSurface
 ) {
-    Card(
+    Surface(
+        onClick = onClick,
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 8.dp)
-            .clickable { onClick() },
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        ),
-        shape = RoundedCornerShape(16.dp)
+            .fillMaxWidth(),
+        color = Color.Transparent
     ) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 12.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = icon,
-                contentDescription = title,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(24.dp)
+                contentDescription = null,
+                tint = if (color == MaterialTheme.colorScheme.error) color else Color.White,
+                modifier = Modifier.size(22.dp)
             )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column {
+            Spacer(modifier = Modifier.width(20.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.SemiBold,
+                    color = if (color == MaterialTheme.colorScheme.error) color else Color.White,
+                    fontWeight = FontWeight.Normal,
                     fontSize = 15.sp
                 )
-                Text(
-                    text = subtitle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    fontSize = 12.sp
-                )
+                if (subtitle.isNotEmpty()) {
+                    Text(
+                        text = subtitle,
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 13.sp
+                    )
+                }
             }
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowRight,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.3f),
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }

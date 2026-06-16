@@ -47,6 +47,7 @@ import androidx.compose.foundation.shape.CircleShape
 import com.example.shioriapp.core.media.SpotifyManager
 import androidx.compose.runtime.collectAsState
 
+
 @Composable
 fun ReaderScreen(
     sourceName: String,

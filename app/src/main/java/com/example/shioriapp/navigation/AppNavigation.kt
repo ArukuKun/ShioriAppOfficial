@@ -52,6 +52,7 @@ import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.viewmodel.AuthViewModel
 import com.example.shioriapp.screens.*
 import com.example.shioriapp.viewmodel.ExploreViewModel
+import androidx.compose.runtime.collectAsState
 import org.json.JSONArray
 import java.io.File
 import java.net.URLDecoder
@@ -370,6 +371,9 @@ fun MainTopAppBar(
                     Routes.MENSAJERIA -> Text(if (showAddFriend) "Buscar Amigos" else "Mensajería", fontWeight = FontWeight.Bold)
                     else -> Text("Shiori", fontWeight = FontWeight.Bold)
                 }
+                Routes.EXPLORE -> Text("Explorar", fontWeight = FontWeight.Bold)
+                Routes.MENSAJERIA -> Text(if (showAddFriend) "Buscar Amigos" else "Mensajería", fontWeight = FontWeight.Bold)
+                else -> Text("Shiori", fontWeight = FontWeight.Bold)
             }
         },
         navigationIcon = {
@@ -413,8 +417,14 @@ fun MainTopAppBar(
                     }
                 }
             }
+            IconButton(onClick = onSearchClick) {
+                Icon(Icons.Default.Search, "Buscar")
+            }
+            IconButton(onClick = onNotificationsClick) {
+                Icon(Icons.Default.Notifications, "Notificaciones")
+            }
         },
-        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+        colors = TopAppBarDefaults.topAppBarColors(
             containerColor = Color.Transparent,
             titleContentColor = MaterialTheme.colorScheme.onSurface,
             actionIconContentColor = MaterialTheme.colorScheme.onSurface,
@@ -736,6 +746,8 @@ fun MainTabsScreen(
                                     color = contentColor
                                 )
                             }
+                        } else if (route == Routes.EXPLORE) {
+                            exploreViewModel.toggleSourcesView(true)
                         }
                     }
                 }
