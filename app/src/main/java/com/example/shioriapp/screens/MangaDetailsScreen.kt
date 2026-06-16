@@ -74,11 +74,7 @@ fun MangaDetailsScreen(
 
     val sortDescending by LibraryManager.isChapterSortDescending.collectAsState()
     var showSortMenu by remember { mutableStateOf(false) }
-
-    // 🔥 Variable de estado para controlar la sinopsis
     var isSynopsisExpanded by remember { mutableStateOf(false) }
-
-    // 🔥 Estado mejorado para el porcentaje de descarga
     val downloadStates = remember { mutableStateMapOf<String, DownloadState>() }
 
     LaunchedEffect(mangaUrl) {
@@ -203,89 +199,67 @@ fun MangaDetailsScreen(
                 ) {
                     Spacer(modifier = Modifier.statusBarsPadding().height(64.dp))
 
-                    Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(localContext).data(state.manga?.coverUrl)
-                                .crossfade(true).build(),
-                            contentDescription = null,
-                            modifier = Modifier.width(120.dp).aspectRatio(0.7f)
-                                .clip(RoundedCornerShape(8.dp)).background(Color.DarkGray),
-                            contentScale = ContentScale.Crop
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = state.manga?.title?.takeIf { it.isNotBlank() }
-                                ?: mangaTitle,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            val statusInt = state.manga?.status ?: 0
-                            val (statusText, statusColor) = when (statusInt) {
-                                1 -> "En curso" to Color(0xFF4CAF50)
-                                2, 4 -> "Completado" to Color(0xFFE91E63)
-                                6 -> "Pausado" to Color(0xFFFF9800)
-                                else -> "Desconocido" to NeutralGris
-                            }
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                // Badge de estado
-                                Surface(
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(
-                                            horizontal = 8.dp,
-                                            vertical = 4.dp
-                                        ),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Canvas(modifier = Modifier.size(8.dp)) {
-                                            drawCircle(color = statusColor, radius = 3.dp.toPx())
-                                        }
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            statusText,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
+                    // 🔥 LAYOUT RESPONSIVO CON FILAS ADAPTABLES
+                    BoxWithConstraints(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        val isWideScreen = maxWidth > 600.dp
 
-                                // Extensión sin borde
-                                if (sourceName.isNotBlank()) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.Extension,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                                            modifier = Modifier.size(11.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = sourceName,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                                            fontSize = 11.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
+                        if (isWideScreen) {
+                            // Layout para tablets/pantallas grandes
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(24.dp)
+                            ) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(localContext).data(state.manga?.coverUrl)
+                                        .crossfade(true).build(),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .width(180.dp)
+                                        .aspectRatio(0.7f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.DarkGray),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    MangaDetailsContent(state = state, mangaTitle = mangaTitle, sourceName = sourceName, isFavorite = isFavorite, localContext = localContext)
+                                }
+                            }
+                        } else {
+                            // Layout para móviles
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(localContext).data(state.manga?.coverUrl)
+                                        .crossfade(true).build(),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .width(120.dp)
+                                        .aspectRatio(0.7f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.DarkGray),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    MangaDetailsContent(state = state, mangaTitle = mangaTitle, sourceName = sourceName, isFavorite = isFavorite, localContext = localContext)
                                 }
                             }
                         }
                     }
 
-                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
                         ActionIcon(icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, label = if (isFavorite) "En Biblioteca" else "Añadir", onClick = { state.manga?.let { LibraryManager.toggleManga(localContext, it.copy(sourceName = sourceName)) } })
                         ActionIcon(icon = Icons.Default.Share, label = "Compartir", onClick = { /* Lógica compartir */ })
                         ActionIcon(icon = Icons.Default.Sync, label = "Migrar", onClick = {
                             val currentManga = state.manga?.copy(sourceName = sourceName) ?: MangaInfo(title = mangaTitle, url = mangaUrl, sourceName = sourceName, coverUrl = state.manga?.coverUrl ?: "", author = state.manga?.author ?: "", status = state.manga?.status ?: 0, genres = state.manga?.genres ?: "")
                             onMigrateClick(currentManga)
                         })
-
-                        // Descargar todo con simulación de porcentaje
                         ActionIcon(
                             icon = Icons.Default.FileDownload,
                             label = "Descargar",
@@ -294,7 +268,6 @@ fun MangaDetailsScreen(
                                     state.chapters.forEach { chapter ->
                                         if (downloadStates[chapter.url] == null || downloadStates[chapter.url] is DownloadState.None) {
                                             coroutineScope.launch {
-                                                // Simula el porcentaje para todos
                                                 for (i in 0..100 step 20) {
                                                     downloadStates[chapter.url] = DownloadState.Downloading(i)
                                                     kotlinx.coroutines.delay(300)
@@ -346,8 +319,7 @@ fun MangaDetailsScreen(
                         )
                         if (isTextOverflowing || isSynopsisExpanded) {
                             Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(), // ✅ CAMBIO AQUÍ: Quitamos el padding(top) para que la flecha suba un poco más
+                                modifier = Modifier.fillMaxWidth(),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -406,10 +378,9 @@ fun MangaDetailsScreen(
                             onDownloadClick = {
                                 if (downloadPath.startsWith("content://")) {
                                     coroutineScope.launch {
-                                        // 🔥 SIMULACIÓN DE PORCENTAJE (Sube de 0 a 100)
                                         for (i in 0..100 step 10) {
                                             downloadStates[chapter.url] = DownloadState.Downloading(i)
-                                            kotlinx.coroutines.delay(200) // Simula tiempo de descarga
+                                            kotlinx.coroutines.delay(200)
                                         }
                                         downloadStates[chapter.url] = DownloadState.Downloaded
                                     }
@@ -424,7 +395,6 @@ fun MangaDetailsScreen(
                     }
                 }
 
-                // 🔥 AQUÍ RESTAURÉ EL BOTÓN DE FILTRO Y ORDEN 🔥
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -481,6 +451,73 @@ fun MangaDetailsScreen(
     }
 }
 
+// 🔥 NUEVA FUNCIÓN AUXILIAR PARA EVITAR REPETICIÓN DE CÓDIGO
+@Composable
+private fun MangaDetailsContent(
+    state: com.example.shioriapp.viewmodel.DetailsState,
+    mangaTitle: String,
+    sourceName: String,
+    isFavorite: Boolean,
+    localContext: Context
+) {
+    Text(
+        text = state.manga?.title?.takeIf { it.isNotBlank() } ?: mangaTitle,
+        color = Color.White,
+        fontSize = 20.sp,
+        fontWeight = FontWeight.Bold
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    val statusInt = state.manga?.status ?: 0
+    val (statusText, statusColor) = when (statusInt) {
+        1 -> "En curso" to Color(0xFF4CAF50)
+        2, 4 -> "Completado" to Color(0xFFF44336)
+        6 -> "Pausado" to Color(0xFFFF9800)
+        else -> "Desconocido" to Color.Gray
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Surface(
+            color = statusColor.copy(alpha = 0.2f),
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, statusColor.copy(alpha = 0.5f))
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Canvas(modifier = Modifier.size(8.dp)) {
+                    drawCircle(color = statusColor, radius = 3.dp.toPx())
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    statusText,
+                    color = statusColor,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        if (sourceName.isNotBlank()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Extension,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.4f),
+                    modifier = Modifier.size(11.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = sourceName,
+                    color = Color.White.copy(alpha = 0.4f),
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChapterItem(
@@ -521,7 +558,6 @@ fun ChapterItem(
                 else if (isRead) { Text("Leído", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f), fontSize = 11.sp) }
             }
 
-            // 🔥 LOGICA VISUAL CON PORCENTAJE 🔥
             IconButton(
                 onClick = { if (downloadState is DownloadState.None) onDownloadClick() },
                 modifier = Modifier.size(36.dp),

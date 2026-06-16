@@ -1,66 +1,79 @@
 package com.example.shioriapp.auth
 
-import android.net.Uri
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
-import com.google.firebase.auth.UserProfileChangeRequest
 import kotlinx.coroutines.tasks.await
 
 class FirebaseAuthManager {
-    private val auth = FirebaseAuth.getInstance()
 
-    val currentUser: FirebaseUser? get() = auth.currentUser
+    // SOLUCIÓN CLAVE: 'by lazy' hace que FirebaseAuth.getInstance()
+    // no se ejecute cuando se crea la clase, sino solo cuando se va a usar
+    // por primera vez (dándole tiempo a la app para inicializar Firebase).
+    private val auth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
 
-    suspend fun signInWithEmail(email: String, password: String): Result<FirebaseUser> {
+    val currentUser: FirebaseUser?
+        get() = try {
+            auth.currentUser
+        } catch (e: Exception) {
+            null
+        }
+
+    fun signOut() {
+        try {
+            auth.signOut()
+        } catch (e: Exception) {
+            android.util.Log.e("FirebaseAuth", "Error signing out: ${e.message}")
+        }
+    }
+
+    suspend fun signInWithEmail(email: String, pass: String): Result<FirebaseUser> {
         return try {
-            val result = auth.signInWithEmailAndPassword(email, password).await()
-            Result.success(result.user!!)
+            val res = auth.signInWithEmailAndPassword(email, pass).await()
+            Result.success(res.user!!)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    suspend fun signUpWithEmail(email: String, password: String, displayName: String): Result<FirebaseUser> {
+    suspend fun signUpWithEmail(email: String, pass: String, name: String): Result<FirebaseUser> {
         return try {
-            val result = auth.createUserWithEmailAndPassword(email, password).await()
-            result.user?.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(displayName).build())?.await()
-            Result.success(result.user!!)
+            val res = auth.createUserWithEmailAndPassword(email, pass).await()
+            val user = res.user!!
+            val profileUpdates = com.google.firebase.auth.UserProfileChangeRequest.Builder()
+                .setDisplayName(name)
+                .build()
+            user.updateProfile(profileUpdates).await()
+            Result.success(user)
         } catch (e: Exception) {
             Result.failure(e)
-        }
-    }
-
-    suspend fun signInWithDiscord(discordUserId: String, email: String?, displayName: String, photoUrl: String?): Result<FirebaseUser> {
-        // Crear usuario en Firebase con email y contraseña aleatoria (o usar Custom Token)
-        // Para simplicidad: si no existe, lo creamos con email = discordUserId@discord.local y password aleatoria
-        val fakeEmail = email ?: "$discordUserId@discord.local"
-        val password = "discord_$discordUserId"
-        return try {
-            val signInResult = auth.signInWithEmailAndPassword(fakeEmail, password).await()
-            Result.success(signInResult.user!!)
-        } catch (e: Exception) {
-            // Usuario no existe, lo creamos
-            try {
-                val createResult = auth.createUserWithEmailAndPassword(fakeEmail, password).await()
-                createResult.user?.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(displayName).setPhotoUri(photoUrl?.let { Uri.parse(it) }).build())?.await()
-                Result.success(createResult.user!!)
-            } catch (e2: Exception) {
-                Result.failure(e2)
-            }
         }
     }
 
     suspend fun signInWithGoogle(idToken: String): Result<FirebaseUser> {
         return try {
             val credential = com.google.firebase.auth.GoogleAuthProvider.getCredential(idToken, null)
-            val result = auth.signInWithCredential(credential).await()
-            Result.success(result.user!!)
+            val authResult = auth.signInWithCredential(credential).await()
+            if (authResult.user != null) {
+                Result.success(authResult.user!!)
+            } else {
+                Result.failure(Exception("Fallo al iniciar sesión con Google"))
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    fun signOut() {
-        auth.signOut()
+    suspend fun signInWithDiscord(
+        discordId: String,
+        email: String,
+        username: String,
+        avatarUrl: String
+    ): Result<FirebaseUser> {
+        return try {
+            // Si no tienes backend, esta función de Discord fallará a nivel Firebase.
+            Result.failure(Exception("El login directo con Discord requiere backend para Custom Token."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 }

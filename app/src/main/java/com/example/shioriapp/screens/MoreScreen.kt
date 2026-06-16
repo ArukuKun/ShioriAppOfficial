@@ -15,7 +15,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -23,17 +22,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.shioriapp.R
+import com.example.shioriapp.navigation.Routes
 import com.example.shioriapp.viewmodel.AuthViewModel
 
 @Composable
 fun MoreScreen(
     authViewModel: AuthViewModel,
     onNavigateToExtension: () -> Unit,
+    onNavigateToRepository: () -> Unit,
     onNavigateToMigration: () -> Unit,
-    onNavigateToStorage: () -> Unit
-) {
+    onNavigateToStorage: () -> Unit,
+    onNavigateToSettings: () -> Unit,
+    onNavigateToLogin: () -> Unit = {}
+){
+    val isDarkMode = isSystemInDarkTheme()
     val authState by authViewModel.authState.collectAsState()
-    val scrollState = rememberScrollState()
+    val isAuthenticated = authState is AuthViewModel.AuthState.Authenticated
+    val userProfile = (authState as? AuthViewModel.AuthState.Authenticated)?.profile
 
     Column(
         modifier = Modifier
@@ -41,115 +46,143 @@ fun MoreScreen(
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(scrollState)
     ) {
-        // --- HEADER JAPONÉS MINIMALISTA ---
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(24.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
+        // 🔥 SECCIÓN DE PERFIL DE USUARIO
+        if (isAuthenticated && userProfile != null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                ),
+                shape = RoundedCornerShape(16.dp)
             ) {
-                when (val state = authState) {
-                    is AuthViewModel.AuthState.Authenticated -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Box(
                             modifier = Modifier
-                                .size(72.dp)
+                                .size(56.dp)
                                 .clip(CircleShape)
-                                .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                                .padding(2.dp)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
                         ) {
-                            AsyncImage(
-                                model = state.profile?.photoUrl ?: R.drawable.ic_shiori_black,
-                                contentDescription = "Foto de perfil",
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(CircleShape),
-                                contentScale = ContentScale.Crop
+                            Icon(
+                                Icons.Default.Person,
+                                contentDescription = "Perfil",
+                                modifier = Modifier.size(28.dp),
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
-                        
                         Spacer(modifier = Modifier.width(16.dp))
-                        
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = state.profile?.displayName ?: "Usuario",
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onBackground,
-                                letterSpacing = (-0.5).sp
+                                text = userProfile.displayName ?: "Usuario",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = state.profile?.email ?: "",
+                                text = userProfile.email ?: "Sin correo",
                                 fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Surface(
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                shape = RoundedCornerShape(4.dp),
-                                modifier = Modifier.padding(top = 6.dp)
-                            ) {
-                                Text(
-                                    text = "PRO MEMBER",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
-                            }
                         }
                     }
-                    else -> {
-                        Icon(
-                            imageVector = Icons.Default.AccountCircle,
-                            contentDescription = null,
-                            modifier = Modifier.size(72.dp),
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    // Botón de cerrar sesión más compacto y elegante
+                    OutlinedButton(
+                        onClick = { authViewModel.logout() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(40.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
                         )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Text(
-                                text = if (state is AuthViewModel.AuthState.Guest) "Invitado" else "No autenticado",
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            TextButton(
-                                onClick = { authViewModel.logout() },
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text("Inicia sesión para sincronizar →", fontSize = 13.sp)
-                            }
-                        }
+                    ) {
+                        Icon(Icons.Default.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Cerrar Sesión", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             }
+        } else {
+            // 🔥 LOGO RESPONSIVO (Solo si no está autenticado)
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                val logoSize = when {
+                    maxWidth < 400.dp -> 100.dp
+                    maxWidth < 600.dp -> 120.dp
+                    else -> 150.dp
+                }
+
+                val logoResource = if (isDarkMode) {
+                    R.drawable.ic_shiori_black
+                } else {
+                    R.drawable.ic_shiori_white
+                }
+
+                Image(
+                    painter = painterResource(id = logoResource),
+                    contentDescription = "Logo de ShioriApp",
+                    modifier = Modifier.size(logoSize)
+                )
+            }
+            
+            // Botón de iniciar sesión más compacto
+            OutlinedButton(
+                onClick = onNavigateToLogin,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(Icons.Default.Login, contentDescription = null, modifier = Modifier.size(20.dp).padding(end = 8.dp))
+                Text("Iniciar Sesión", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
         }
 
-        HorizontalDivider(
-            modifier = Modifier.padding(horizontal = 24.dp),
-            thickness = 0.5.dp,
-            color = MaterialTheme.colorScheme.outlineVariant
+        SettingsSectionTitle(title = "Fuentes y Contenido")
+        SettingsItem(
+            icon = Icons.Default.CloudDownload,
+            title = "Extensiones",
+            subtitle = "Gestiona las extensiones de mangas",
+            onClick = { onNavigateToExtension() }
+        )
+        SettingsItem(
+            icon = Icons.Default.FolderSpecial,
+            title = "Repositorios",
+            subtitle = "Gestiona los repositorios añadidos",
+            onClick = { onNavigateToRepository() }
         )
 
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-            
-            SettingsSectionTitle(title = "APLICACIÓN")
-            
-            SettingsItem(
-                icon = Icons.Default.Extension,
-                title = "Extensiones",
-                subtitle = "Gestiona tus fuentes de lectura",
-                onClick = onNavigateToExtension
-            )
+        Spacer(modifier = Modifier.height(16.dp))
 
-            SettingsItem(
-                icon = Icons.Default.ImportExport,
-                title = "Migración de Biblioteca",
-                subtitle = "Mover mangas entre extensiones",
-                onClick = onNavigateToMigration
-            )
+        SettingsSectionTitle(title = "Herramientas")
+        SettingsItem(
+            icon = Icons.Default.ImportExport,
+            title = "Migrar",
+            subtitle = "Migra mangas de una extensión a otra",
+            onClick = { onNavigateToMigration() }
+        )
+        SettingsItem(
+            icon = Icons.Default.Storage,
+            title = "Gestor de Descargas",
+            subtitle = "Ver y organizar tus mangas descargados",
+            onClick = { onNavigateToStorage() }
+        )
 
             SettingsItem(
                 icon = Icons.Default.Storage,
@@ -158,34 +191,25 @@ fun MoreScreen(
                 onClick = onNavigateToStorage
             )
 
-            SettingsSectionTitle(title = "PERSONALIZACIÓN")
-            SettingsItem(icon = Icons.Default.Palette, title = "Apariencia", subtitle = "Temas y modo oscuro")
-            SettingsItem(icon = Icons.Default.Notifications, title = "Notificaciones", subtitle = "Alertas de capítulos")
-            SettingsItem(icon = Icons.Default.Language, title = "Idioma", subtitle = "Configuración regional")
-
-            SettingsSectionTitle(title = "CUENTA")
-            if (authState is AuthViewModel.AuthState.Authenticated) {
-                SettingsItem(
-                    icon = Icons.AutoMirrored.Filled.Logout,
-                    title = "Cerrar sesión",
-                    subtitle = "Desvincular cuenta de Google",
-                    onClick = { authViewModel.logout() },
-                    color = MaterialTheme.colorScheme.error
-                )
-            } else {
-                SettingsItem(
-                    icon = Icons.Default.Login,
-                    title = "Iniciar sesión",
-                    subtitle = "Accede a tus datos en la nube",
-                    onClick = { authViewModel.logout() }
-                )
-            }
-
-            SettingsSectionTitle(title = "SOPORTE")
-            SettingsItem(icon = Icons.Default.Info, title = "ShioriApp v1.0.0", subtitle = "Ver notas de la versión")
-            
-            Spacer(modifier = Modifier.height(120.dp))
+        SettingsSectionTitle(title = "Sistema")
+        SettingsItem(
+            icon = Icons.Default.Settings,
+            title = "Configuración",
+            subtitle = "Apariencia, lector, notificaciones y caché",
+            onClick = { onNavigateToSettings() }
+        )
+        
+        if (isAuthenticated) {
+            SettingsItem(
+                icon = Icons.Default.Info,
+                title = "Acerca de",
+                subtitle = "Versión de la aplicación y licencias",
+                onClick = { /* TODO: Navegar a pantalla Acerca de */ }
+            )
         }
+
+        // 🔥 Espacio para la barra inferior flotante
+        Spacer(modifier = Modifier.height(100.dp))
     }
 }
 

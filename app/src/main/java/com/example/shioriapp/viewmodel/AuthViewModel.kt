@@ -7,15 +7,31 @@ import com.example.shioriapp.auth.DiscordAuthService
 import com.example.shioriapp.auth.FirebaseAuthManager
 import com.example.shioriapp.auth.UserManager
 import com.example.shioriapp.domain.model.UserProfile
+import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 class AuthViewModel(private val context: Context) : ViewModel() {
-    private val authManager = FirebaseAuthManager()
-    private val userManager = UserManager(FirebaseFirestore.getInstance())
-    private val discordService = DiscordAuthService(context)
+
+    // 1. ESCUDO: Si Firebase no está inicializado, lo encendemos a la fuerza de manera segura.
+    init {
+        try {
+            if (FirebaseApp.getApps(context).isEmpty()) {
+                FirebaseApp.initializeApp(context)
+                android.util.Log.d("AuthViewModel", "Firebase initialized in ViewModel fallback.")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AuthViewModel", "Failed to initialize Firebase in ViewModel", e)
+        }
+    }
+
+    // 2. SOLUCIÓN (by lazy): Obligamos a que la Base de Datos y la Autenticación
+    // esperen a que Firebase esté listo antes de intentar conectarse.
+    private val authManager by lazy { FirebaseAuthManager() }
+    private val userManager by lazy { UserManager(FirebaseFirestore.getInstance()) }
+    private val discordService by lazy { DiscordAuthService(context) }
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
     val authState: StateFlow<AuthState> = _authState
@@ -27,6 +43,7 @@ class AuthViewModel(private val context: Context) : ViewModel() {
         data class Authenticated(val userId: String, val profile: UserProfile?) : AuthState()
     }
 
+    // 3. Este init ahora es seguro porque se ejecuta DESPUÉS del escudo de Firebase
     init {
         if (authManager.currentUser != null) {
             viewModelScope.launch {
@@ -83,24 +100,24 @@ class AuthViewModel(private val context: Context) : ViewModel() {
         return try {
             val tokenResult = discordService.exchangeCodeForToken(code)
             if (tokenResult.isFailure) {
-                _errorMessage.value = "Discord Token Error: ${tokenResult.exceptionOrNull()?.message}"
+                _errorMessage.value = "Error del Token de Discord: ${tokenResult.exceptionOrNull()?.message}"
                 return false
             }
             val token = tokenResult.getOrNull()!!
             val userResult = discordService.fetchUserInfo(token)
             if (userResult.isFailure) {
-                _errorMessage.value = "Discord User Error: ${userResult.exceptionOrNull()?.message}"
+                _errorMessage.value = "Error de Usuario de Discord: ${userResult.exceptionOrNull()?.message}"
                 return false
             }
             val discordUser = userResult.getOrNull()!!
-            
+
             val signInResult = authManager.signInWithDiscord(
                 discordUser.id,
-                discordUser.email,
+                discordUser.email ?: "", // <-- Operador Elvis para evitar el crasheo de nulos
                 discordUser.username,
                 "https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png"
             )
-            
+
             if (signInResult.isSuccess) {
                 val firebaseUser = signInResult.getOrNull()!!
                 val existingProfile = userManager.getUserProfile(firebaseUser.uid)
@@ -121,11 +138,11 @@ class AuthViewModel(private val context: Context) : ViewModel() {
                 _authState.value = AuthState.Authenticated(firebaseUser.uid, profile)
                 true
             } else {
-                _errorMessage.value = "Firebase Discord Sign-in Error: ${signInResult.exceptionOrNull()?.message}"
+                _errorMessage.value = "Error de inicio de sesión de Discord en Firebase: ${signInResult.exceptionOrNull()?.message}"
                 false
             }
         } catch (e: Exception) {
-            _errorMessage.value = "Unexpected error: ${e.message}"
+            _errorMessage.value = "Error inesperado: ${e.message}"
             false
         }
     }
@@ -133,59 +150,67 @@ class AuthViewModel(private val context: Context) : ViewModel() {
     fun loginWithGoogle(idToken: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
+            _errorMessage.value = null
             android.util.Log.i("GOOGLE_AUTH", "--- INICIO DE PROCESO DE AUTENTICACIÓN ---")
-            android.util.Log.d("GOOGLE_AUTH", "Paso 1: Intercambiando Token con Firebase...")
-            
-            val result = authManager.signInWithGoogle(idToken)
-            if (result.isSuccess) {
-                val user = result.getOrNull()!!
-                android.util.Log.i("GOOGLE_AUTH", "Paso 2: Autenticación Firebase EXITOSA. UID: ${user.uid}")
-                
-                try {
-                    android.util.Log.d("GOOGLE_AUTH", "Paso 3: Verificando perfil en Firestore...")
-                    val existingProfile = userManager.getUserProfile(user.uid)
-                    
-                    val profile = if (existingProfile == null) {
-                        android.util.Log.w("GOOGLE_AUTH", "Aviso: No existe perfil. Creando nuevo registro...")
-                        val newProfile = UserProfile(
-                            userId = user.uid,
-                            email = user.email,
-                            displayName = user.displayName ?: "Usuario de Google",
-                            photoUrl = user.photoUrl?.toString(),
-                            discordId = null,
-                            discordUsername = null
-                        )
-                        userManager.createOrUpdateUserProfile(user.uid, newProfile)
-                        android.util.Log.i("GOOGLE_AUTH", "Perfil creado satisfactoriamente.")
-                        newProfile
+
+            try {
+                val result = authManager.signInWithGoogle(idToken)
+                if (result.isSuccess) {
+                    val user = result.getOrNull()
+                    if (user != null) {
+                        try {
+                            val existingProfile = userManager.getUserProfile(user.uid)
+                            val profile = if (existingProfile == null) {
+                                val newProfile = UserProfile(
+                                    userId = user.uid,
+                                    email = user.email,
+                                    displayName = user.displayName ?: "Usuario de Google",
+                                    photoUrl = user.photoUrl?.toString(),
+                                    discordId = null,
+                                    discordUsername = null
+                                )
+                                userManager.createOrUpdateUserProfile(user.uid, newProfile)
+                                newProfile
+                            } else {
+                                existingProfile
+                            }
+                            _authState.value = AuthState.Authenticated(user.uid, profile)
+                        } catch (e: Exception) {
+                            android.util.Log.e("GOOGLE_AUTH", "Error de sincronización de perfil", e)
+                            _errorMessage.value = "Error de sincronización: ${e.message}"
+                            _authState.value = AuthState.Unauthenticated
+                        }
                     } else {
-                        android.util.Log.i("GOOGLE_AUTH", "Perfil existente cargado correctamente.")
-                        existingProfile
+                        _errorMessage.value = "Error: Usuario nulo tras autenticación"
+                        _authState.value = AuthState.Unauthenticated
                     }
-                    
-                    _authState.value = AuthState.Authenticated(user.uid, profile)
-                    android.util.Log.i("GOOGLE_AUTH", "--- PROCESO FINALIZADO CON ÉXITO ---")
-                } catch (e: Exception) {
-                    android.util.Log.e("GOOGLE_AUTH", "ERROR CRÍTICO en sincronización de Firestore", e)
-                    _errorMessage.value = "Error de sincronización: ${e.message}"
+                } else {
+                    val error = result.exceptionOrNull()
+                    android.util.Log.e("GOOGLE_AUTH", "Error de autenticación", error)
+                    _errorMessage.value = "Error de autenticación: ${error?.message ?: "Desconocido"}"
                     _authState.value = AuthState.Unauthenticated
                 }
-            } else {
-                val error = result.exceptionOrNull()
-                android.util.Log.e("GOOGLE_AUTH", "ERROR en Firebase Auth: ${error?.message}")
-                _errorMessage.value = "Error de autenticación Google: ${error?.message}"
+            } catch (e: Exception) {
+                android.util.Log.e("GOOGLE_AUTH", "Error crítico en loginWithGoogle", e)
+                _errorMessage.value = "Error crítico: ${e.message}"
                 _authState.value = AuthState.Unauthenticated
             }
         }
     }
 
     fun loginAsGuest() {
+        _errorMessage.value = null
         _authState.value = AuthState.Guest
     }
 
     fun logout() {
-        authManager.signOut()
+        try {
+            authManager.signOut()
+        } catch (e: Exception) {
+            android.util.Log.e("AuthViewModel", "Error al cerrar sesión", e)
+        }
         _authState.value = AuthState.Unauthenticated
+        _errorMessage.value = null
     }
 
     fun setErrorMessage(message: String?) {

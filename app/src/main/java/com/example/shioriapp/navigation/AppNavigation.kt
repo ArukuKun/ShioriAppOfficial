@@ -10,6 +10,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -17,6 +18,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,6 +72,9 @@ object Routes {
     const val SEARCH = "search"
     const val MIGRATE = "migrate_screen"
     const val MIGRATE_SEARCH = "migrate_search/{query}"
+    const val LOGIN = "login"
+    const val SETTINGS = "settings_screen"
+    const val REPOSITORY = "repository_screen"
 }
 
 object ReaderDataCache {
@@ -80,15 +87,19 @@ object MigrationCache {
     var oldManga: MangaInfo? = null
 }
 
+@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
 fun AppNavigation() {
     val rootNavController = rememberNavController()
     val context = LocalContext.current
-    val authViewModel: AuthViewModel = viewModel(factory = object : androidx.lifecycle.ViewModelProvider.Factory {
-        override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-            return AuthViewModel(context.applicationContext) as T
-        }
-    })
+    val windowSizeClass = calculateWindowSizeClass(context as android.app.Activity)
+
+    val authViewModel: AuthViewModel =
+        viewModel(factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                return AuthViewModel(context.applicationContext) as T
+            }
+        })
     val authState by authViewModel.authState.collectAsState()
 
     NavHost(
@@ -101,23 +112,22 @@ fun AppNavigation() {
         popExitTransition = { slideOutHorizontally(tween(300)) { it } + fadeOut(tween(300)) }
     ) {
         composable("auth_wrapper") {
-            when (val state = authState) {
-                is AuthViewModel.AuthState.Authenticated -> {
+            MainTabsScreen(
+                rootNavController = rootNavController,
+                authViewModel = authViewModel,
+                windowSizeClass = windowSizeClass.widthSizeClass
+            )
+        }
+
+        composable(Routes.LOGIN) {
+            LoginScreen(
+                authViewModel = authViewModel,
+                onLoginSuccess = {
+                    // Simplemente hacemos pop para volver al "auth_wrapper" (MainTabsScreen)
+                    // que se recompondrá automáticamente con el nuevo estado de autenticación.
+                    rootNavController.popBackStack()
                 }
-                is AuthViewModel.AuthState.Loading -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                }
-                else -> {
-                    LoginScreen(
-                        authViewModel = authViewModel,
-                        onLoginSuccess = {
-                            // El StateFlow se encargará de recomponer
-                        }
-                    )
-                }
-            }
+            )
         }
 
         composable(
@@ -238,6 +248,16 @@ fun AppNavigation() {
             ExtensionsScreen(onBack = { rootNavController.popBackStack() })
         }
 
+        composable(Routes.REPOSITORY){
+            RepositoryScreen(onBack = { rootNavController.popBackStack() })
+        }
+
+        composable(Routes.SETTINGS) {
+            SettingsScreen(
+                onBack = { rootNavController.popBackStack() }
+            )
+        }
+
         composable(Routes.SEARCH) {
             SearchScreen(
                 onBack = { rootNavController.popBackStack() },
@@ -291,6 +311,21 @@ fun AppNavigation() {
                 }
             )
         }
+
+        composable(
+            route = "chat_room/{chatId}",
+            arguments = listOf(navArgument("chatId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val chatId = backStackEntry.arguments?.getString("chatId") ?: ""
+            val currentAuthState by authViewModel.authState.collectAsState()
+            val currentUserId = (currentAuthState as? AuthViewModel.AuthState.Authenticated)?.userId ?: ""
+
+            ChatRoomScreen(
+                chatId = chatId,
+                currentUserId = currentUserId,
+                navController = rootNavController
+            )
+        }
     }
 }
 
@@ -301,36 +336,85 @@ fun MainTopAppBar(
     isCollapsed: Boolean,
     onSearchClick: () -> Unit,
     onNotificationsClick: () -> Unit,
+    onAccountClick: () -> Unit,
     onAddFriendClick: () -> Unit = {},
     showAddFriend: Boolean = false,
+    windowSizeClass: WindowWidthSizeClass,
     modifier: Modifier = Modifier
 ) {
     val isDarkTheme = isSystemInDarkTheme()
-    
-    TopAppBar(
+
+    val pillColor by animateColorAsState(
+        targetValue = if (isCollapsed) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f) else Color.Transparent,
+        animationSpec = tween(300),
+        label = "pillColor"
+    )
+
+    CenterAlignedTopAppBar(
         modifier = modifier,
         title = {
-            when (currentRoute) {
-                Routes.HOME -> {
-                    val logoRes = if (isDarkTheme) R.drawable.ic_shiori_white else R.drawable.ic_shiori_black
-                    Image(
-                        painter = painterResource(id = logoRes), 
-                        contentDescription = null, 
-                        modifier = Modifier.height(28.dp)
-                    )
+            AnimatedVisibility(
+                visible = !isCollapsed,
+                enter = fadeIn(tween(300)),
+                exit = fadeOut(tween(300))
+            ) {
+                when (currentRoute) {
+                    Routes.HOME -> {
+                        val logoRes = if (isDarkTheme) R.drawable.ic_shiori_black else R.drawable.ic_shiori_white
+                        Image(
+                            painter = painterResource(id = logoRes),
+                            contentDescription = null,
+                            modifier = Modifier.height(28.dp)
+                        )
+                    }
+                    Routes.EXPLORE -> Text("Explorar", fontWeight = FontWeight.Bold)
+                    Routes.MENSAJERIA -> Text(if (showAddFriend) "Buscar Amigos" else "Mensajería", fontWeight = FontWeight.Bold)
+                    else -> Text("Shiori", fontWeight = FontWeight.Bold)
                 }
                 Routes.EXPLORE -> Text("Explorar", fontWeight = FontWeight.Bold)
                 Routes.MENSAJERIA -> Text(if (showAddFriend) "Buscar Amigos" else "Mensajería", fontWeight = FontWeight.Bold)
                 else -> Text("Shiori", fontWeight = FontWeight.Bold)
             }
         },
-        actions = {
-            if (currentRoute == Routes.MENSAJERIA) {
-                IconButton(onClick = onAddFriendClick) {
+        navigationIcon = {
+            Surface(
+                shape = CircleShape,
+                color = pillColor,
+                modifier = Modifier.padding(start = if (isCollapsed) 8.dp else 0.dp)
+            ) {
+                IconButton(onClick = onAccountClick) {
                     Icon(
-                        imageVector = if (showAddFriend) Icons.Default.Close else Icons.Default.PersonAdd, 
-                        contentDescription = "Amigos"
+                        Icons.Default.AccountCircle,
+                        contentDescription = "Cuenta",
+                        modifier = Modifier.size(28.dp)
                     )
+                }
+            }
+        },
+        actions = {
+            Surface(
+                shape = CircleShape,
+                color = pillColor,
+                modifier = Modifier.padding(end = if (isCollapsed) 8.dp else 0.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = if (isCollapsed) 4.dp else 0.dp)
+                ) {
+                    if (currentRoute == Routes.MENSAJERIA) {
+                        IconButton(onClick = onAddFriendClick) {
+                            Icon(
+                                imageVector = if (showAddFriend) Icons.Default.Close else Icons.Default.PersonAdd,
+                                contentDescription = "Amigos"
+                            )
+                        }
+                    }
+                    IconButton(onClick = onSearchClick) {
+                        Icon(Icons.Default.Search, "Buscar")
+                    }
+                    IconButton(onClick = onNotificationsClick) {
+                        Icon(Icons.Default.Notifications, "Notificaciones")
+                    }
                 }
             }
             IconButton(onClick = onSearchClick) {
@@ -343,14 +427,19 @@ fun MainTopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = Color.Transparent,
             titleContentColor = MaterialTheme.colorScheme.onSurface,
-            actionIconContentColor = MaterialTheme.colorScheme.onSurface
+            actionIconContentColor = MaterialTheme.colorScheme.onSurface,
+            navigationIconContentColor = MaterialTheme.colorScheme.onSurface
         )
     )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-
+fun MainTabsScreen(
+    rootNavController: NavHostController,
+    authViewModel: AuthViewModel,
+    windowSizeClass: WindowWidthSizeClass
+) {
     val tabsNavController = rememberNavController()
     val navBackStackEntry by tabsNavController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Routes.HOME
@@ -358,12 +447,67 @@ fun MainTopAppBar(
     var showAddFriend by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val exploreViewModel: ExploreViewModel = viewModel()
+    val currentAuthState by authViewModel.authState.collectAsState()
+    var showLoginDialog by remember { mutableStateOf(false) }
+
+    var scrollOffset by remember { mutableFloatStateOf(0f) }
     var isCollapsed by remember { mutableStateOf(false) }
+    var hideBottomBar by remember { mutableStateOf(false) }
+
+    // 🔥 VALORES RESPONSIVOS BASADOS EN EL TAMAÑO DE PANTALLA
+    val bottomBarPadding = when (windowSizeClass) {
+        WindowWidthSizeClass.Compact -> 16.dp
+        WindowWidthSizeClass.Medium -> 24.dp
+        else -> 32.dp
+    }
+
+    val bottomBarIconSize = when (windowSizeClass) {
+        WindowWidthSizeClass.Compact -> 20.dp
+        WindowWidthSizeClass.Medium -> 22.dp
+        else -> 24.dp
+    }
+
+    val bottomBarTextSize = when (windowSizeClass) {
+        WindowWidthSizeClass.Compact -> 10.sp
+        WindowWidthSizeClass.Medium -> 11.sp
+        else -> 12.sp
+    }
+
+    LaunchedEffect(currentRoute) {
+        scrollOffset = 0f
+        isCollapsed = false
+        hideBottomBar = false
+    }
+
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (available.y < -5) isCollapsed = true
-                if (available.y > 5) isCollapsed = false
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                scrollOffset -= consumed.y
+
+                if (available.y > 0f && consumed.y == 0f) {
+                    scrollOffset = 0f
+                }
+
+                scrollOffset = scrollOffset.coerceAtLeast(0f)
+
+                if (scrollOffset <= 5f) {
+                    isCollapsed = false
+                } else if (scrollOffset > 40f) {
+                    isCollapsed = true
+                }
+
+                if (available.y < -0.1f) {
+                    hideBottomBar = true
+                }
+
+                if (consumed.y > 0f || available.y > 0f) {
+                    hideBottomBar = false
+                }
+
                 return Offset.Zero
             }
         }
@@ -371,32 +515,20 @@ fun MainTopAppBar(
 
     val view = LocalView.current
     val isDarkTheme = isSystemInDarkTheme()
-    LaunchedEffect(isCollapsed, isDarkTheme) {
+
+    LaunchedEffect(isDarkTheme) {
         val window = (view.context as? android.app.Activity)?.window ?: return@LaunchedEffect
-
-        window.statusBarColor = if (isCollapsed) {
-            android.graphics.Color.argb(100, 0, 0, 0)
-        } else {
-            android.graphics.Color.TRANSPARENT
-        }
-
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
         val insetsController = androidx.core.view.WindowCompat.getInsetsController(window, view)
-
-        if (isDarkTheme) {
-            insetsController.isAppearanceLightStatusBars = false
-        } else {
-            insetsController.isAppearanceLightStatusBars = !isCollapsed
-        }
+        insetsController.isAppearanceLightStatusBars = !isDarkTheme
     }
-
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .nestedScroll(nestedScrollConnection)
             .background(MaterialTheme.colorScheme.background)
-    )
-    {
+    ) {
         NavHost(
             navController = tabsNavController,
             startDestination = Routes.HOME,
@@ -422,16 +554,26 @@ fun MainTopAppBar(
                                 val cachedCaps = mutableListOf<ChapterInfo>()
                                 for (i in 0 until cArray.length()) {
                                     val cObj = cArray.getJSONObject(i)
-                                    cachedCaps.add(ChapterInfo(name = cObj.getString("name"), url = cObj.getString("url")))
+                                    cachedCaps.add(
+                                        ChapterInfo(
+                                            name = cObj.getString("name"),
+                                            url = cObj.getString("url")
+                                        )
+                                    )
                                 }
                                 val progress = LibraryManager.progressMap.value[manga.url]
-                                val lastReadIndex = cachedCaps.indexOfFirst { it.url == progress?.lastChapterUrl }
+                                val lastReadIndex =
+                                    cachedCaps.indexOfFirst { it.url == progress?.lastChapterUrl }
                                 val chapterToOpen = if (lastReadIndex >= 0) {
                                     cachedCaps[lastReadIndex]
                                 } else {
                                     val numRegex = Regex("\\d+(\\.\\d+)?")
-                                    val firstNum = numRegex.find(cachedCaps.first().name)?.value?.toDoubleOrNull() ?: 0.0
-                                    val lastNum = numRegex.find(cachedCaps.last().name)?.value?.toDoubleOrNull() ?: 0.0
+                                    val firstNum =
+                                        numRegex.find(cachedCaps.first().name)?.value?.toDoubleOrNull()
+                                            ?: 0.0
+                                    val lastNum =
+                                        numRegex.find(cachedCaps.last().name)?.value?.toDoubleOrNull()
+                                            ?: 0.0
                                     val isDescending = firstNum > lastNum
                                     if (isDescending) cachedCaps.lastOrNull() else cachedCaps.firstOrNull()
                                 }
@@ -439,13 +581,19 @@ fun MainTopAppBar(
                                     ReaderDataCache.currentChapter = chapterToOpen
                                     ReaderDataCache.chapters = cachedCaps
                                     ReaderDataCache.mangaUrl = manga.url
-                                    val safeSource = if (manga.sourceName.isNotBlank()) manga.sourceName else "FuenteDesconocida"
-                                    val intent = Intent(context, ReaderActivity::class.java).apply { putExtra("sourceName", safeSource) }
+                                    val safeSource =
+                                        if (manga.sourceName.isNotBlank()) manga.sourceName else "FuenteDesconocida"
+                                    val intent = Intent(
+                                        context,
+                                        ReaderActivity::class.java
+                                    ).apply { putExtra("sourceName", safeSource) }
                                     context.startActivity(intent)
                                     directJumpSuccess = true
                                 }
                             }
-                        } catch (e: Exception) { Log.e("SHIORI_APP", "Falló el salto rápido: ${e.message}") }
+                        } catch (e: Exception) {
+                            Log.e("SHIORI_APP", "Falló el salto rápido: ${e.message}")
+                        }
                         if (!directJumpSuccess) {
                             val encUrl = URLEncoder.encode(manga.url, "UTF-8")
                             val encTitle = URLEncoder.encode(manga.title, "UTF-8")
@@ -455,6 +603,7 @@ fun MainTopAppBar(
                     }
                 )
             }
+
             composable(Routes.EXPLORE) {
                 ExploreScreen(
                     viewModel = exploreViewModel,
@@ -466,87 +615,207 @@ fun MainTopAppBar(
                     }
                 )
             }
-            composable(Routes.MENSAJERIA) { 
+            composable(Routes.MENSAJERIA) {
+                val currentAuthState by authViewModel.authState.collectAsState()
+                val currentUserId =
+                    (currentAuthState as? AuthViewModel.AuthState.Authenticated)?.userId
 
+                MensajeriaScreen(
+                    userId = currentUserId,
+                    navController = rootNavController
+                )
             }
+
             composable(Routes.MAS) {
                 MoreScreen(
                     authViewModel = authViewModel,
                     onNavigateToExtension = { rootNavController.navigate(Routes.EXTENSION) },
                     onNavigateToMigration = { rootNavController.navigate(Routes.MIGRATE) },
-                    onNavigateToStorage = { rootNavController.navigate(Routes.STORAGE_SETTINGS) }
+                    onNavigateToStorage = { rootNavController.navigate(Routes.STORAGE_SETTINGS) },
+                    onNavigateToRepository = { rootNavController.navigate(Routes.REPOSITORY) },
+                    onNavigateToSettings = { rootNavController.navigate(Routes.SETTINGS) },
+                    onNavigateToLogin = { rootNavController.navigate(Routes.LOGIN) }
                 )
             }
         }
 
         if (currentRoute != Routes.MAS) {
-            MainTopAppBar(
-                currentRoute = currentRoute,
-                isCollapsed = isCollapsed,
-                onSearchClick = { rootNavController.navigate(Routes.SEARCH) },
-                onNotificationsClick = { showNotifications = !showNotifications },
-                onAddFriendClick = { showAddFriend = !showAddFriend },
-                showAddFriend = showAddFriend,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-            )
+        MainTopAppBar(
+            currentRoute = currentRoute,
+            isCollapsed = isCollapsed,
+            onSearchClick = { rootNavController.navigate(Routes.SEARCH) },
+            onNotificationsClick = { showNotifications = !showNotifications },
+            onAccountClick = {
+                if (currentAuthState is AuthViewModel.AuthState.Authenticated) {
+                    tabsNavController.navigate(Routes.MAS)
+                } else {
+                    showLoginDialog = true
+                }
+            },
+            onAddFriendClick = { showAddFriend = !showAddFriend },
+            showAddFriend = showAddFriend,
+            windowSizeClass = windowSizeClass,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+        )
         }
 
-        NavigationBar(
+        // 🔥 PASTILLA RESPONSIVA
+        AnimatedVisibility(
+            visible = !hideBottomBar,
+            enter = slideInVertically(tween(300)) { it } + fadeIn(tween(300)),
+            exit = slideOutVertically(tween(300)) { it } + fadeOut(tween(300)),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth(),
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-            tonalElevation = 0.dp
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = bottomBarPadding, vertical = 12.dp)
         ) {
-            val items = listOf(
-                Triple(Routes.HOME, Icons.Default.Home, "Biblioteca"),
-                Triple(Routes.EXPLORE, Icons.Default.Explore, "Explorar"),
-                Triple(Routes.MENSAJERIA, Icons.Default.ChatBubbleOutline, "Mensajes"),
-                Triple(Routes.MAS, Icons.Default.MoreHoriz, "Más")
-            )
-            items.forEach { (route, icon, label) ->
-                val isSelected = currentRoute == route
-                NavigationBarItem(
-                    icon = { Icon(icon, contentDescription = label) },
-                    label = { Text(label, fontSize = 11.sp) },
-                    selected = isSelected,
-                    colors = NavigationBarItemDefaults.colors(
-                        indicatorColor = Color.Transparent,
-                        selectedIconColor = MaterialTheme.colorScheme.onSurface,
-                        selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                    ),
-                    onClick = {
-                        if (currentRoute != route) {
-                            tabsNavController.navigate(route) {
-                                popUpTo(Routes.HOME) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = CircleShape,
+                color = if (isDarkTheme) Color(0xFF252527) else MaterialTheme.colorScheme.surfaceVariant,
+                shadowElevation = 8.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .padding(horizontal = 4.dp, vertical = 4.dp)
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val items = listOf(
+                        Triple(Routes.HOME, Icons.Default.Home, "Biblioteca"),
+                        Triple(Routes.EXPLORE, Icons.Default.Explore, "Explorar"),
+                        Triple(Routes.MENSAJERIA, Icons.Default.ChatBubbleOutline, "Mensajes"),
+                        Triple(Routes.MAS, Icons.Default.Menu, "Menú")
+                    )
+
+                    items.forEach { (route, icon, label) ->
+                        val isSelected = currentRoute == route
+
+                        val backgroundColor by animateColorAsState(
+                            targetValue = if (isSelected) {
+                                if (isDarkTheme) Color(0xFF4A4A4F) else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            } else Color.Transparent,
+                            animationSpec = tween(300),
+                            label = "bg_color"
+                        )
+
+                        val contentColor = if (isSelected) {
+                            if (isDarkTheme) Color.White else MaterialTheme.colorScheme.primary
+                        } else {
+                            if (isDarkTheme) Color.Gray else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(CircleShape)
+                                .background(backgroundColor)
+                                .clickable {
+                                    if (currentRoute != route) {
+                                        tabsNavController.navigate(route) {
+                                            popUpTo(Routes.HOME) { saveState = true }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    } else if (route == Routes.EXPLORE) {
+                                        exploreViewModel.toggleSourcesView(true)
+                                    }
+                                }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = label,
+                                    tint = contentColor,
+                                    modifier = Modifier.size(bottomBarIconSize)
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = label,
+                                    fontSize = bottomBarTextSize,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = contentColor
+                                )
                             }
                         } else if (route == Routes.EXPLORE) {
                             exploreViewModel.toggleSourcesView(true)
                         }
                     }
-                )
+                }
             }
         }
 
         if (showNotifications) {
-            NotificationDropdown(expanded = showNotifications, onDismiss = { showNotifications = false })
+            NotificationDropdown(
+                expanded = showNotifications,
+                onDismiss = { showNotifications = false },
+                windowSizeClass = windowSizeClass
+            )
+        }
+
+        if (showLoginDialog) {
+            AlertDialog(
+                onDismissRequest = { showLoginDialog = false },
+                title = {
+                    Text("No has iniciado sesión", fontWeight = FontWeight.Bold)
+                },
+                text = {
+                    Text("Inicia sesión o crea una cuenta para acceder a tu perfil, guardar tu progreso en la nube y chatear con amigos.")
+                },
+                icon = {
+                    Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(48.dp))
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        showLoginDialog = false
+                        rootNavController.navigate(Routes.LOGIN)
+                    }) {
+                        Text("Iniciar sesión")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showLoginDialog = false }) {
+                        Text("Cancelar")
+                    }
+                }
+            )
         }
     }
 }
 
 @Composable
-fun NotificationDropdown(expanded: Boolean, onDismiss: () -> Unit) {
+fun NotificationDropdown(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    windowSizeClass: WindowWidthSizeClass
+) {
+    // 🔥 ANCHO RESPONSIVO
+    val maxWidth = when (windowSizeClass) {
+        WindowWidthSizeClass.Compact -> 260.dp
+        WindowWidthSizeClass.Medium -> 300.dp
+        else -> 340.dp
+    }
+
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
-        modifier = Modifier.width(280.dp).background(MaterialTheme.colorScheme.surface)
+        modifier = Modifier
+            .widthIn(max = maxWidth)
+            .background(MaterialTheme.colorScheme.surface)
     ) {
-        Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Text("Notificaciones", fontWeight = FontWeight.Bold, fontSize = 16.sp)
             Spacer(modifier = Modifier.height(24.dp))
             Icon(

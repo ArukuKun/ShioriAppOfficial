@@ -17,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -36,6 +35,17 @@ import com.example.shioriapp.viewmodel.ReaderViewModel
 import com.example.shioriapp.data.repository.LibraryManager
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.alpha
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.foundation.shape.CircleShape
+import com.example.shioriapp.core.media.SpotifyManager
+import androidx.compose.runtime.collectAsState
 
 
 @Composable
@@ -47,8 +57,18 @@ fun ReaderScreen(
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     var showOverlay by remember { mutableStateOf(false) }
-    val listState = rememberLazyListState()
 
+    // 🔥 INSTANCIA DEL MANAGER DE SPOTIFY
+    val spotifyManager = remember { SpotifyManager(context) }
+    val currentTrack by spotifyManager.currentTrack.collectAsState(initial = null)
+    val isMusicPaused by spotifyManager.isPaused.collectAsState(initial = true)
+    val isSpotifyConnected by spotifyManager.isConnected.collectAsState(initial = false)
+
+    var showSpotifySheet by remember { mutableStateOf(false) }
+    @OptIn(ExperimentalMaterial3Api::class)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+
+    val listState = rememberLazyListState()
     var hasRestoredInitialPosition by remember { mutableStateOf(false) }
     var isReadyToSaveProgress by remember { mutableStateOf(false) }
 
@@ -60,15 +80,29 @@ fun ReaderScreen(
     var anchorOffset by remember { mutableIntStateOf(0) }
     var isPrepending by remember { mutableStateOf(false) }
 
-    // Obtenemos el ImageLoader global para nuestro motor de precarga
     val imageLoader = context.imageLoader
     val currentFirstVisible by remember { derivedStateOf { listState.firstVisibleItemIndex } }
 
+    // CONFIGURACIÓN INMERSIVA INICIAL Y CICLO DE VIDA DE SPOTIFY
     DisposableEffect(Unit) {
-        controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        controller?.hide(WindowInsetsCompat.Type.systemBars())
+        // Conectar a Spotify apenas se abre el lector
+        spotifyManager.connect()
+
+        window?.let {
+            it.statusBarColor = android.graphics.Color.TRANSPARENT
+            it.navigationBarColor = android.graphics.Color.TRANSPARENT
+        }
+        controller?.let {
+            it.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            it.isAppearanceLightStatusBars = false
+            it.isAppearanceLightNavigationBars = false
+            it.hide(WindowInsetsCompat.Type.systemBars())
+        }
 
         onDispose {
+            // Desconectar Spotify para no dejar procesos colgados
+            spotifyManager.disconnect()
+
             viewModel.clearReader()
             ReaderDataCache.currentChapter = null
             ReaderDataCache.chapters = emptyList()
@@ -76,6 +110,7 @@ fun ReaderScreen(
         }
     }
 
+    // ANIMAR BARRAS AL TOCAR LA PANTALLA
     LaunchedEffect(showOverlay) {
         controller?.let {
             if (showOverlay) {
@@ -102,11 +137,9 @@ fun ReaderScreen(
         }
     }
 
-    // 🚀 EL MOTOR DE PRE-CARGA (PREFETCHER) ESTILO MIHON 🚀
     LaunchedEffect(currentFirstVisible, state.pages) {
         if (state.pages.isEmpty() || !hasRestoredInitialPosition) return@LaunchedEffect
 
-        // Precarga las imágenes silenciosamente en caché para que saborear su tamaño nativo real
         val start = (currentFirstVisible - 5).coerceAtLeast(0)
         val end = (currentFirstVisible + 5).coerceAtMost(state.pages.lastIndex)
 
@@ -251,16 +284,11 @@ fun ReaderScreen(
 
                 val imageUrl = readerPage.page.imageUrl ?: readerPage.page.url
 
-                // 🔥 LA UNIÓN DEFINITIVA: Estética + Cargador + Mitigación de Saltos
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        // 🔥 Solución Estética: wrapContentHeight(). La caja no medirá 400px,
-                        // medirá lo que mide la imagen real nativa (arregla image_2.png).
                         .wrapContentHeight()
                         .background(Color.Black)
-                        // 🔥 Mitigación: Cuando la imagen real cargue y crezca de 0 a nativa,
-                        // lo hará mediante una animación suave en lugar de un salto brusco.
                         .animateContentSize()
                 ) {
                     SubcomposeAsyncImage(
@@ -269,21 +297,16 @@ fun ReaderScreen(
                             .crossfade(true)
                             .build(),
                         contentDescription = "Página ${readerPage.displayIndex}",
-                        // 🔥 Estética: Mantiene ratio nativo (horizontal se ve landscape, vertical portrait)
                         contentScale = ContentScale.FillWidth,
                         modifier = Modifier.fillMaxWidth(),
-
-                        // 🔥 SÍMBOLO DE CARGANDO EN TIEMPO REAL (Vuelve tu hoja negra)
                         loading = {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    // La caja de carga mide la altura mínima de tensión
                                     .height(400.dp)
                                     .background(Color.Black),
                                 contentAlignment = Alignment.Center
                             ) {
-                                // Tu spinner centrado
                                 CircularProgressIndicator(color = Color.DarkGray)
                             }
                         }
@@ -316,39 +339,47 @@ fun ReaderScreen(
 
             AnimatedVisibility(
                 visible = showOverlay,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.BottomCenter)
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 32.dp)
             ) {
-                Text(
-                    text = "Cap. $capActual/$capTotal  •  Pág. ${pageInfo.displayIndex}/${pageInfo.totalPages}",
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
+                Box(
                     modifier = Modifier
-                        .windowInsetsPadding(WindowInsets.navigationBars)
-                        .padding(bottom = 16.dp)
-                        .background(Color(0xFF121212).copy(alpha = 0.9f), RoundedCornerShape(16.dp))
-                        .padding(horizontal = 14.dp, vertical = 6.dp)
-                )
+                        .background(
+                            color = Color(0xFF151515).copy(alpha = 0.95f),
+                            shape = androidx.compose.foundation.shape.CircleShape
+                        )
+                        .padding(horizontal = 24.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Cap. $capActual/$capTotal  •  Pág. ${pageInfo.displayIndex}/${pageInfo.totalPages}",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
 
         AnimatedVisibility(
             visible = showOverlay && hasRestoredInitialPosition,
-            enter = slideInVertically() + fadeIn(),
-            exit = slideOutVertically() + fadeOut(),
+            enter = slideInVertically { -it } + fadeIn(),
+            exit = slideOutVertically { -it } + fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter)
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.85f))
-                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .background(Color(0xFF151515))
+                    .statusBarsPadding()
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp)
+                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp).fillMaxWidth()
                 ) {
                     IconButton(onClick = { safeExit() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
@@ -357,9 +388,109 @@ fun ReaderScreen(
                         text = cleanChapterName(currentVisibleChapterName),
                         color = Color.White,
                         maxLines = 1,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
                     )
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    IconButton(onClick = { showSpotifySheet = true }) {
+                        Icon(
+                            imageVector = Icons.Default.MusicNote,
+                            contentDescription = "Spotify",
+                            tint = Color(0xFF1DB954)
+                        )
+                    }
+
+                    @OptIn(ExperimentalMaterial3Api::class)
+                    if (showSpotifySheet) {
+                        ModalBottomSheet(
+                            onDismissRequest = { showSpotifySheet = false },
+                            sheetState = sheetState,
+                            containerColor = Color(0xFF121212), // Fondo oscuro premium
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 32.dp, start = 16.dp, end = 16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = if (isSpotifyConnected) "Reproduciendo OST" else "Conectando a Spotify...",
+                                    color = if (isSpotifyConnected) Color(0xFF1DB954) else Color.Gray,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+
+                                Spacer(modifier = Modifier.height(24.dp))
+
+                                // Portada del Álbum (Placeholder temporal)
+                                Box(
+                                    modifier = Modifier
+                                        .size(200.dp)
+                                        .background(Color(0xFF282828), RoundedCornerShape(16.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.MusicNote, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(64.dp))
+                                }
+
+                                Spacer(modifier = Modifier.height(24.dp))
+
+                                // 🔥 TEXTOS DINÁMICOS DESDE SPOTIFY
+                                Text(
+                                    text = currentTrack?.name ?: "Sin canción",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 22.sp,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = currentTrack?.artist?.name ?: "Artista desconocido",
+                                    color = Color(0xFFB3B3B3),
+                                    fontSize = 16.sp,
+                                    maxLines = 1
+                                )
+
+                                Spacer(modifier = Modifier.height(32.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(0.8f),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // 🔥 BOTÓN ANTERIOR
+                                    IconButton(
+                                        onClick = { spotifyManager.skipPrevious() },
+                                        enabled = isSpotifyConnected
+                                    ) {
+                                        Icon(Icons.Default.SkipPrevious, contentDescription = "Anterior", tint = if (isSpotifyConnected) Color.White else Color.Gray, modifier = Modifier.size(42.dp))
+                                    }
+
+                                    // 🔥 BOTÓN PLAY / PAUSA DINÁMICO
+                                    Box(
+                                        modifier = Modifier
+                                            .size(64.dp)
+                                            .background(if (isSpotifyConnected) Color(0xFF1DB954) else Color.DarkGray, CircleShape)
+                                            .clickable(enabled = isSpotifyConnected) { spotifyManager.playPause() },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        val icon = if (isMusicPaused) Icons.Default.PlayArrow else Icons.Default.Pause
+                                        Icon(icon, contentDescription = "Play/Pause", tint = Color.Black, modifier = Modifier.size(42.dp))
+                                    }
+
+                                    // 🔥 BOTÓN SIGUIENTE
+                                    IconButton(
+                                        onClick = { spotifyManager.skipNext() },
+                                        enabled = isSpotifyConnected
+                                    ) {
+                                        Icon(Icons.Default.SkipNext, contentDescription = "Siguiente", tint = if (isSpotifyConnected) Color.White else Color.Gray, modifier = Modifier.size(42.dp))
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+                        }
+                    }
                 }
             }
         }

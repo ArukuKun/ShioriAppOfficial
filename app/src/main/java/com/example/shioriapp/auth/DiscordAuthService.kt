@@ -14,12 +14,9 @@ class DiscordAuthService(private val context: Context) {
     private val gson = Gson()
 
     companion object {
-        // Credenciales Proporcionadas
         const val CLIENT_ID = "1511382251383029901"
         
-        // ⚠️ IMPORTANTE: El Client Secret NO debe estar en el código por seguridad, 
-        // pero para que funcione localmente, debes ponerlo aquí.
-        const val CLIENT_SECRET = "TU_CLIENT_SECRET_AQUI" 
+        const val CLIENT_SECRET = "TU_CLIENT_SECRET_AQUI"
         
         const val REDIRECT_URI = "http://localhost/callback"
         
