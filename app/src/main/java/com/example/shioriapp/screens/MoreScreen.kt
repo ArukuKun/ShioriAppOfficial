@@ -1,14 +1,16 @@
 package com.example.shioriapp.screens
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,13 +18,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import com.example.shioriapp.R
-import com.example.shioriapp.navigation.Routes
 import com.example.shioriapp.viewmodel.AuthViewModel
 
 @Composable
@@ -33,127 +33,138 @@ fun MoreScreen(
     onNavigateToMigration: () -> Unit,
     onNavigateToStorage: () -> Unit,
     onNavigateToSettings: () -> Unit,
-    onNavigateToLogin: () -> Unit = {}
-){
+    onNavigateToLogin: () -> Unit = {},
+    onNavigateToProfile: () -> Unit = {}
+) {
     val isDarkMode = isSystemInDarkTheme()
     val authState by authViewModel.authState.collectAsState()
     val isAuthenticated = authState is AuthViewModel.AuthState.Authenticated
     val userProfile = (authState as? AuthViewModel.AuthState.Authenticated)?.profile
 
+    // 1. Guardamos el estado del scroll
+    val scrollState = rememberScrollState()
+
+    // 2. Detectamos si el usuario ha scrolleado un poco hacia abajo (más de 50 pixeles)
+    val isScrolled by remember { derivedStateOf { scrollState.value > 50 } }
+
+    // 3. Animamos el tamaño del logo dependiendo de si hay scroll o no
+    val logoSize by animateDpAsState(
+        targetValue = if (isScrolled) 80.dp else 180.dp,
+        label = "logoSizeAnim"
+    )
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .verticalScroll(scrollState)
+            .statusBarsPadding()
+            .verticalScroll(scrollState) // Le pasamos el scrollState aquí
+            .padding(horizontal = 16.dp)
     ) {
-        // 🔥 SECCIÓN DE PERFIL DE USUARIO
-        if (isAuthenticated && userProfile != null) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                ),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(56.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Person,
-                                contentDescription = "Perfil",
-                                modifier = Modifier.size(28.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = userProfile.displayName ?: "Usuario",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = userProfile.email ?: "Sin correo",
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    // Botón de cerrar sesión más compacto y elegante
-                    OutlinedButton(
-                        onClick = { authViewModel.logout() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(40.dp),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error
-                        )
-                    ) {
-                        Icon(Icons.Default.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Cerrar Sesión", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                    }
-                }
-            }
-        } else {
-            // 🔥 LOGO RESPONSIVO (Solo si no está autenticado)
-            BoxWithConstraints(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 24.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                val logoSize = when {
-                    maxWidth < 400.dp -> 100.dp
-                    maxWidth < 600.dp -> 120.dp
-                    else -> 150.dp
-                }
 
-                val logoResource = if (isDarkMode) {
-                    R.drawable.ic_shiori_black
-                } else {
-                    R.drawable.ic_shiori_white
-                }
-
-                Image(
-                    painter = painterResource(id = logoResource),
-                    contentDescription = "Logo de ShioriApp",
-                    modifier = Modifier.size(logoSize)
-                )
-            }
-            
-            // Botón de iniciar sesión más compacto
-            OutlinedButton(
-                onClick = onNavigateToLogin,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Icon(Icons.Default.Login, contentDescription = null, modifier = Modifier.size(20.dp).padding(end = 8.dp))
-                Text("Iniciar Sesión", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            }
-            Spacer(modifier = Modifier.height(16.dp))
+        // --- LOGO DINÁMICO ---
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = if (isScrolled) 8.dp else 24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            val logoResource = if (isDarkMode) R.drawable.ic_shiori_black else R.drawable.ic_shiori_white
+            Image(
+                painter = painterResource(id = logoResource),
+                contentDescription = "Logo de ShioriApp",
+                modifier = Modifier.size(logoSize)
+            )
         }
 
+        // --- TARJETA DE USUARIO (Unificada) ---
+        SettingsSectionTitle(title = "Cuenta")
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            ),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Ícono circular de perfil
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = "Perfil",
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // Contenido central y botón (Cambia si está logueado o no)
+                if (isAuthenticated && userProfile != null) {
+                    // MODO: SESIÓN INICIADA
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = userProfile.displayName ?: "Usuario",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Conectado", // Aquí pondremos el estado actual configurable
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    Button(
+                        onClick = onNavigateToProfile,
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.height(36.dp)
+                    ) {
+                        Text("Ver Perfil", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    // MODO: INVITADO
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Modo Invitado",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Guarda tu progreso",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Button(
+                        onClick = onNavigateToLogin,
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.height(36.dp)
+                    ) {
+                        Text("Iniciar Sesión", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // --- OPCIONES DE CONFIGURACIÓN ---
         SettingsSectionTitle(title = "Fuentes y Contenido")
         SettingsItem(
             icon = Icons.Default.CloudDownload,
@@ -184,12 +195,7 @@ fun MoreScreen(
             onClick = { onNavigateToStorage() }
         )
 
-            SettingsItem(
-                icon = Icons.Default.Storage,
-                title = "Almacenamiento",
-                subtitle = "Caché, descargas y base de datos",
-                onClick = onNavigateToStorage
-            )
+        Spacer(modifier = Modifier.height(16.dp))
 
         SettingsSectionTitle(title = "Sistema")
         SettingsItem(
@@ -198,7 +204,7 @@ fun MoreScreen(
             subtitle = "Apariencia, lector, notificaciones y caché",
             onClick = { onNavigateToSettings() }
         )
-        
+
         if (isAuthenticated) {
             SettingsItem(
                 icon = Icons.Default.Info,
@@ -208,7 +214,6 @@ fun MoreScreen(
             )
         }
 
-        // 🔥 Espacio para la barra inferior flotante
         Spacer(modifier = Modifier.height(100.dp))
     }
 }
@@ -216,12 +221,11 @@ fun MoreScreen(
 @Composable
 fun SettingsSectionTitle(title: String) {
     Text(
-        text = title,
-        color = Color.White.copy(alpha = 0.5f),
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 1.sp,
-        modifier = Modifier.padding(top = 28.dp, bottom = 8.dp, start = 12.dp)
+        text = title.uppercase(),
+        color = MaterialTheme.colorScheme.primary,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.ExtraBold,
+        modifier = Modifier.padding(bottom = 8.dp)
     )
 }
 
@@ -230,48 +234,44 @@ fun SettingsItem(
     icon: ImageVector,
     title: String,
     subtitle: String,
-    onClick: () -> Unit = {},
-    color: Color = MaterialTheme.colorScheme.onSurface
+    onClick: () -> Unit = {}
 ) {
-    Surface(
-        onClick = onClick,
+    Card(
         modifier = Modifier
-            .fillMaxWidth(),
-        color = Color.Transparent
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Row(
             modifier = Modifier
-                .padding(horizontal = 12.dp, vertical = 14.dp),
+                .fillMaxWidth()
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = icon,
-                contentDescription = null,
-                tint = if (color == MaterialTheme.colorScheme.error) color else Color.White,
-                modifier = Modifier.size(22.dp)
+                contentDescription = title,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp)
             )
-            Spacer(modifier = Modifier.width(20.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
                 Text(
                     text = title,
-                    color = if (color == MaterialTheme.colorScheme.error) color else Color.White,
-                    fontWeight = FontWeight.Normal,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp
                 )
-                if (subtitle.isNotEmpty()) {
-                    Text(
-                        text = subtitle,
-                        color = Color.White.copy(alpha = 0.5f),
-                        fontSize = 13.sp
-                    )
-                }
+                Text(
+                    text = subtitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    fontSize = 12.sp
+                )
             }
-            Icon(
-                imageVector = Icons.Default.KeyboardArrowRight,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.3f),
-                modifier = Modifier.size(18.dp)
-            )
         }
     }
 }

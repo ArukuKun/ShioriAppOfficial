@@ -1,6 +1,7 @@
 package com.example.shioriapp.viewmodel
 
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shioriapp.auth.DiscordAuthService
@@ -12,6 +13,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 class AuthViewModel(private val context: Context) : ViewModel() {
 
@@ -203,6 +205,25 @@ class AuthViewModel(private val context: Context) : ViewModel() {
         _authState.value = AuthState.Guest
     }
 
+    fun loginWithUserId(userId: String) {
+        viewModelScope.launch {
+            _authState.value = AuthState.Loading
+            _errorMessage.value = null
+            try {
+                val profile = userManager.getUserProfile(userId)
+                if (profile != null) {
+                    _authState.value = AuthState.Authenticated(userId, profile)
+                } else {
+                    _errorMessage.value = "No se encontró ningún perfil con ese ID"
+                    _authState.value = AuthState.Unauthenticated
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Error al buscar ID: ${e.message}"
+                _authState.value = AuthState.Unauthenticated
+            }
+        }
+    }
+
     fun logout() {
         try {
             authManager.signOut()
@@ -215,5 +236,61 @@ class AuthViewModel(private val context: Context) : ViewModel() {
 
     fun setErrorMessage(message: String?) {
         _errorMessage.value = message
+    }
+
+    fun updateProfile(
+        newName: String,
+        newImageUri: Uri?,
+        bio: String? = null,
+        birthday: String? = null,
+        mangaInterests: List<String> = emptyList()
+    ) {
+        val currentState = _authState.value
+        if (currentState is AuthState.Authenticated) {
+            viewModelScope.launch {
+                _authState.value = AuthState.Loading
+                _errorMessage.value = null
+                
+                try {
+                    val userId = currentState.userId
+                    var uploadedPhotoUrl: String? = currentState.profile?.photoUrl
+
+                    // Subir nueva foto si existe
+                    if (newImageUri != null) {
+                        val newUrl = userManager.uploadProfileImage(userId, newImageUri)
+                        if (newUrl != null) {
+                            uploadedPhotoUrl = newUrl
+                        } else {
+                            _errorMessage.value = "Error al subir la imagen"
+                            _authState.value = currentState // Restaurar estado
+                            return@launch
+                        }
+                    }
+
+                    // Actualizar el perfil en Firestore
+                    userManager.updateUserProfile(userId, newName, uploadedPhotoUrl, bio, birthday, mangaInterests)
+                    
+                    // Actualizar el nombre en Firebase Auth (opcional, pero buena práctica)
+                    try {
+                        val updateRequest = com.google.firebase.auth.userProfileChangeRequest {
+                            displayName = newName
+                            if (uploadedPhotoUrl != null) {
+                                photoUri = Uri.parse(uploadedPhotoUrl)
+                            }
+                        }
+                        com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.updateProfile(updateRequest)?.await()
+                    } catch (e: Exception) {
+                        android.util.Log.e("AuthViewModel", "Error updating Firebase Auth profile", e)
+                    }
+
+                    // Refrescar el perfil local
+                    val updatedProfile = userManager.getUserProfile(userId)
+                    _authState.value = AuthState.Authenticated(userId, updatedProfile)
+                } catch (e: Exception) {
+                    _errorMessage.value = "Error actualizando perfil: ${e.message}"
+                    _authState.value = currentState // Restaurar estado
+                }
+            }
+        }
     }
 }

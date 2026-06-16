@@ -50,6 +50,8 @@ fun LoginScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
+    var userIdInput by remember { mutableStateOf("") }
+    var isIdLoginMode by remember { mutableStateOf(false) }
 
     val googleLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -142,45 +144,24 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Campos de texto
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it },
-                label = { Text("Correo electrónico") },
-                leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                )
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("Contraseña") },
-                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                )
-            )
-
-            if (!isLoginMode) {
-                Spacer(modifier = Modifier.height(16.dp))
+            if (isIdLoginMode) {
                 OutlinedTextField(
-                    value = displayName,
-                    onValueChange = { displayName = it },
-                    label = { Text("Nombre de usuario") },
-                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                    value = userIdInput,
+                    onValueChange = { userIdInput = it },
+                    label = { Text("ID de Usuario Shiori") },
+                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    placeholder = { Text("Pega aquí el ID...") }
+                )
+            } else {
+                // Campos de texto
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("Correo electrónico") },
+                    leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true,
@@ -189,6 +170,40 @@ fun LoginScreen(
                         unfocusedBorderColor = MaterialTheme.colorScheme.outline
                     )
                 )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Contraseña") },
+                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                    )
+                )
+
+                if (!isLoginMode) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = displayName,
+                        onValueChange = { displayName = it },
+                        label = { Text("Nombre de usuario") },
+                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                        )
+                    )
+                }
             }
 
             if (errorMessage != null) {
@@ -206,7 +221,8 @@ fun LoginScreen(
             // Botón principal
             Button(
                 onClick = {
-                    if (isLoginMode) authViewModel.loginWithEmail(email, password)
+                    if (isIdLoginMode) authViewModel.loginWithUserId(userIdInput)
+                    else if (isLoginMode) authViewModel.loginWithEmail(email, password)
                     else authViewModel.registerWithEmail(email, password, displayName)
                 },
                 modifier = Modifier
@@ -218,8 +234,13 @@ fun LoginScreen(
                 if (authState is AuthViewModel.AuthState.Loading) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
                 } else {
+                    val btnText = when {
+                        isIdLoginMode -> "ENTRAR POR ID"
+                        isLoginMode -> "INICIAR SESIÓN"
+                        else -> "REGISTRARSE"
+                    }
                     Text(
-                        text = if (isLoginMode) "INICIAR SESIÓN" else "REGISTRARSE",
+                        text = btnText,
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
                         letterSpacing = 1.sp
@@ -228,11 +249,22 @@ fun LoginScreen(
             }
 
             TextButton(
-                onClick = { isLoginMode = !isLoginMode },
+                onClick = { 
+                    if (isIdLoginMode) {
+                        isIdLoginMode = false
+                    } else {
+                        isLoginMode = !isLoginMode 
+                    }
+                },
                 modifier = Modifier.padding(top = 12.dp)
             ) {
+                val switchText = when {
+                    isIdLoginMode -> "Volver al login normal"
+                    isLoginMode -> "¿No tienes cuenta? Regístrate"
+                    else -> "¿Ya tienes cuenta? Inicia sesión"
+                }
                 Text(
-                    text = if (isLoginMode) "¿No tienes cuenta? Regístrate" else "¿Ya tienes cuenta? Inicia sesión",
+                    text = switchText,
                     color = MaterialTheme.colorScheme.primary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium
@@ -299,6 +331,14 @@ fun LoginScreen(
                     onClick = {
                         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(DiscordAuthService.AUTHORIZE_URL))
                         context.startActivity(intent)
+                    }
+                )
+
+                SocialButton(
+                    icon = Icons.Default.Lock,
+                    label = "ID",
+                    onClick = {
+                        isIdLoginMode = true
                     }
                 )
 

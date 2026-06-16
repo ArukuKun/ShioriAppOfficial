@@ -10,6 +10,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class ChatListViewModel(private val userId: String) : ViewModel() {
@@ -29,20 +30,32 @@ class ChatListViewModel(private val userId: String) : ViewModel() {
     val searchResults: StateFlow<List<UserProfile>> = _searchResults.asStateFlow()
 
     init {
+        // Observar Perfil de Usuario para cambios en amigos y solicitudes
         viewModelScope.launch {
-            chatRepository.getUserChats(userId).collect { chats ->
-                _chats.value = chats
+            userManager.observeUserProfile(userId).collectLatest { profile ->
+                profile?.let {
+                    val friendsList = it.friends.mapNotNull { fId -> userManager.getUserProfile(fId) }
+                    val requestsList = it.friendRequestsReceived.mapNotNull { rId -> userManager.getUserProfile(rId) }
+                    _friends.value = friendsList
+                    _friendRequests.value = requestsList
+                }
             }
         }
-        viewModelScope.launch { loadFriendsAndRequests() } // ✅ envolver en launch
-    }
 
-    private suspend fun loadFriendsAndRequests() {
-        val profile = userManager.getUserProfile(userId) ?: return
-        val friendsList = profile.friends.mapNotNull { userManager.getUserProfile(it) }
-        val requestsList = profile.friendRequestsReceived.mapNotNull { userManager.getUserProfile(it) }
-        _friends.value = friendsList
-        _friendRequests.value = requestsList
+        // Observar Chats
+        viewModelScope.launch {
+            chatRepository.getUserChats(userId).collectLatest { chats ->
+                val enrichedChats = chats.map { chat ->
+                    val otherParticipantId = chat.participants.find { it != userId } ?: ""
+                    val otherProfile = userManager.getUserProfile(otherParticipantId)
+                    chat.copy(
+                        otherUserName = otherProfile?.displayName ?: "Usuario Shiori",
+                        otherUserPhotoUrl = otherProfile?.photoUrl
+                    )
+                }
+                _chats.value = enrichedChats
+            }
+        }
     }
 
     fun searchUsers(query: String) {
@@ -59,18 +72,25 @@ class ChatListViewModel(private val userId: String) : ViewModel() {
     fun sendFriendRequest(toUserId: String) {
         viewModelScope.launch {
             userManager.sendFriendRequest(userId, toUserId)
-            loadFriendsAndRequests()
+            // Ya no es necesario llamar a loadFriendsAndRequests() porque observeUserProfile se encarga
         }
     }
 
     fun acceptFriendRequest(fromUserId: String) {
         viewModelScope.launch {
             userManager.acceptFriendRequest(userId, fromUserId)
-            loadFriendsAndRequests()
+            // Ya no es necesario llamar a loadFriendsAndRequests() porque observeUserProfile se encarga
         }
     }
 
     fun getChatIdWithFriend(friendId: String): String? {
         return _chats.value.find { chat -> chat.participants.containsAll(listOf(userId, friendId)) }?.chatId
+    }
+
+    fun createChatWithFriend(friendId: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val chatId = chatRepository.createPrivateChat(userId, friendId)
+            onResult(chatId)
+        }
     }
 }
