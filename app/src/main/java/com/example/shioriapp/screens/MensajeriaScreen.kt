@@ -65,6 +65,8 @@ fun MensajeriaAuthenticatedScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .padding(top = 56.dp) // 🔥 Añadido para evitar colisión con la MainTopAppBar
     ) {
         // Buscador superior
         OutlinedTextField(
@@ -334,7 +336,11 @@ fun EmptyChatState() {
 @Composable
 fun MensajeriaUnauthenticatedScreen() {
     Column(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(top = 56.dp) // 🔥 Añadido para evitar colisión con la MainTopAppBar
+            .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {

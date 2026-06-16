@@ -70,9 +70,15 @@ fun ExploreScreen(
             Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
+                // 🔥 GRID ADAPTIVO EN LUGAR DE FIXED(3)
+                columns = GridCells.Adaptive(minSize = 100.dp),
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 100.dp, top = 100.dp),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    bottom = 120.dp, // 🔥 AUMENTADO para evitar que la pastilla tape contenido
+                    top = 80.dp // 🔥 REDUCIDO de 100.dp a 80.dp
+                ),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -153,9 +159,17 @@ fun ExploreScreen(
 
                 // GRILLA DE MANGAS GLOBAL
                 if (state.isLoading && state.allMangas.isEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) { Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    }
                 } else if (gridMangas.isEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) { Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { Text("No hay resultados en esta categoría.", color = Color.Gray) } }
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                            Text("No hay resultados en esta categoría.", color = Color.Gray)
+                        }
+                    }
                 } else {
                     itemsIndexed(items = gridMangas, key = { _, manga -> manga.url }) { index, manga ->
                         MangaGridItem(
@@ -169,7 +183,11 @@ fun ExploreScreen(
                 }
 
                 if (state.isLoadingMore) {
-                    item(span = { GridItemSpan(maxLineSpan) }) { Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    }
                 }
             }
         }
@@ -208,7 +226,7 @@ fun ExploreScreen(
                         onTabSelected = { viewModel.setExtensionTab(it) },
                         onBack = { viewModel.closeExtensionCatalog() },
                         onMangaClick = { manga ->
-                            onMangaClick(manga.url, manga.sourceName, manga.title) // Navega directo
+                            onMangaClick(manga.url, manga.sourceName, manga.title)
                         },
                         imageLoader = customImageLoader,
                         onLoadMore = { viewModel.loadMoreExtensionMangas() }
@@ -219,7 +237,6 @@ fun ExploreScreen(
     }
 }
 
-// 🔥 VISTA INTERNA DEL CATÁLOGO (Estilo Premium moderno y virtualizado)
 @Composable
 fun ExtensionCatalogView(
     sourceName: String,
@@ -281,9 +298,9 @@ fun ExtensionCatalogView(
         } else if (distinctMangas.isEmpty()) {
             Box(Modifier.fillMaxSize(), Alignment.Center) { Text("No se encontraron resultados.", color = Color.Gray) }
         } else {
-            // Virtualizado y optimizado para teléfonos gama baja (idéntico a la grilla global)
+            // 🔥 GRID ADAPTIVO
             LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
+                columns = GridCells.Adaptive(minSize = 100.dp),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp, top = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -367,7 +384,6 @@ private fun getExtensionIcon(packageManager: PackageManager, sourceName: String)
         val packages = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
         val extensionPackage = packages.firstOrNull { appInfo ->
             val pkgName = appInfo.packageName
-            // ¡AQUÍ ESTÁ LA MAGIA! Agregamos los identificadores de Aniyomi y Anime
             (pkgName.contains("eu.kanade.tachiyomi.extension") ||
                     pkgName.contains("eu.kanade.tachiyomi.animeextension") ||
                     pkgName.contains("aniyomi") ||

@@ -36,11 +36,10 @@ fun HomeScreen(
     }
 
     val progressMap by LibraryManager.progressMap.collectAsState()
-
     val biblioteca by LibraryManager.library.collectAsState()
 
     val continueReadingList = remember(progressMap) {
-         val tempList = mutableListOf<Pair<MangaInfo, Long>>()
+        val tempList = mutableListOf<Pair<MangaInfo, Long>>()
 
         progressMap.forEach { (url, progress) ->
             if (progress.lastChapterUrl.isNotBlank()) {
@@ -72,7 +71,7 @@ fun HomeScreen(
                         tempList.add(Pair(manga, progress.lastReadTime))
 
                     } catch (e: Exception) {
-
+                        // Caché corrupto, se ignora
                     }
                 }
             }
@@ -80,6 +79,7 @@ fun HomeScreen(
         tempList.sortedByDescending { it.second }.map { it.first }
     }
 
+    // 🔥 GRID ADAPTATIVO QUE SE AJUSTA AL TAMAÑO DE PANTALLA
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 110.dp),
         modifier = Modifier
@@ -88,8 +88,8 @@ fun HomeScreen(
         contentPadding = PaddingValues(
             start = 16.dp,
             end = 16.dp,
-            top = 100.dp,
-            bottom = 100.dp
+            top = 104.dp,  // 🔥 AUMENTADO para evitar colisión con la TopAppBar y la barra de estado
+            bottom = 120.dp // 🔥 AUMENTADO para evitar que la pastilla tape contenido
         ),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -117,20 +117,30 @@ fun HomeScreen(
                     }
                 }
             }
-            // Divisor estético
             item(span = { GridItemSpan(maxLineSpan) }) {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color.Gray.copy(alpha = 0.2f))
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    color = Color.Gray.copy(alpha = 0.2f)
+                )
             }
         }
 
-        // SECCIÓN: Tu Biblioteca General
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Text("Tu Biblioteca", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+            Text(
+                "Tu Biblioteca",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 8.dp)
+            )
         }
 
         if (biblioteca.isEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Text("Tu biblioteca está vacía. Ve a explorar o usa el buscador para añadir mangas.", color = Color.Gray, modifier = Modifier.padding(top = 32.dp))
+                Text(
+                    "Tu biblioteca está vacía. Ve a explorar o usa el buscador para añadir mangas.",
+                    color = Color.Gray,
+                    modifier = Modifier.padding(top = 32.dp)
+                )
             }
         } else {
             items(biblioteca) { manga ->
@@ -158,9 +168,24 @@ fun LibraryMangaCard(manga: MangaInfo, onClick: () -> Unit, modifier: Modifier =
         shape = RoundedCornerShape(8.dp)
     ) {
         Box {
-            AsyncImage(model = manga.coverUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.9f)), startY = 150f)))
-            Text(manga.title, color = Color.White, fontSize = 12.sp, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp), maxLines = 2)
+            AsyncImage(
+                model = manga.coverUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.9f)), startY = 150f))
+            )
+            Text(
+                manga.title,
+                color = Color.White,
+                fontSize = 12.sp,
+                modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
+                maxLines = 2
+            )
         }
     }
 }

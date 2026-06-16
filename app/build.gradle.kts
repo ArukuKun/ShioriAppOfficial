@@ -4,6 +4,7 @@ plugins {
     kotlin("android")
     id("org.jetbrains.kotlin.plugin.serialization") version "1.9.0"
     alias(libs.plugins.ksp)
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -83,6 +84,7 @@ dependencies {
     implementation(files("libs/spotify-app-remote-release-0.8.0.aar"))
     implementation("com.google.code.gson:gson:2.10.1")
     implementation(libs.retrofit.core)
+    implementation("androidx.compose.material3:material3-window-size-class:1.2.0")
     implementation(libs.retrofit.gson)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
