@@ -13,6 +13,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,14 +29,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -46,6 +51,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
+import coil.compose.AsyncImage
 import com.example.shioriapp.R
 import com.example.shioriapp.data.repository.LibraryManager
 import com.example.shioriapp.domain.model.ChapterInfo
@@ -53,6 +59,7 @@ import com.example.shioriapp.domain.model.MangaInfo
 import com.example.shioriapp.viewmodel.AuthViewModel
 import com.example.shioriapp.screens.*
 import com.example.shioriapp.viewmodel.ExploreViewModel
+import com.example.shioriapp.viewmodel.NotificationViewModel
 import org.json.JSONArray
 import java.io.File
 import java.net.URLDecoder
@@ -77,6 +84,7 @@ object Routes {
     const val REPOSITORY = "repository_screen"
     const val PROFILE = "profile"
     const val EXTERNAL_PROFILE = "external_profile/{userId}"
+    const val APPEARANCE = "appearance_screen"
 }
 
 object ReaderDataCache {
@@ -125,8 +133,6 @@ fun AppNavigation() {
             LoginScreen(
                 authViewModel = authViewModel,
                 onLoginSuccess = {
-                    // Simplemente hacemos pop para volver al "auth_wrapper" (MainTabsScreen)
-                    // que se recompondrá automáticamente con el nuevo estado de autenticación.
                     rootNavController.popBackStack()
                 }
             )
@@ -256,6 +262,13 @@ fun AppNavigation() {
 
         composable(Routes.SETTINGS) {
             SettingsScreen(
+                onBack = { rootNavController.popBackStack() },
+                onNavigateToAppearance = { rootNavController.navigate(Routes.APPEARANCE) }
+            )
+        }
+
+        composable(Routes.APPEARANCE) {
+            AppearanceScreen(
                 onBack = { rootNavController.popBackStack() }
             )
         }
@@ -355,9 +368,11 @@ fun AppNavigation() {
 fun MainTopAppBar(
     currentRoute: String,
     isCollapsed: Boolean,
+    isAuthenticated: Boolean,
     onSearchClick: () -> Unit,
     onNotificationsClick: () -> Unit,
-    onAccountClick: () -> Unit,
+    onProfileClick: () -> Unit,
+    onLogoutClick: () -> Unit,
     onAddFriendClick: () -> Unit = {},
     showAddFriend: Boolean = false,
     windowSizeClass: WindowWidthSizeClass,
@@ -370,6 +385,8 @@ fun MainTopAppBar(
         animationSpec = tween(300),
         label = "pillColor"
     )
+
+    var showProfileMenu by remember { mutableStateOf(false) }
 
     CenterAlignedTopAppBar(
         modifier = modifier,
@@ -400,12 +417,40 @@ fun MainTopAppBar(
                 color = pillColor,
                 modifier = Modifier.padding(start = if (isCollapsed) 8.dp else 0.dp)
             ) {
-                IconButton(onClick = onAccountClick) {
-                    Icon(
-                        Icons.Default.AccountCircle,
-                        contentDescription = "Cuenta",
-                        modifier = Modifier.size(28.dp)
-                    )
+                Box {
+                    IconButton(onClick = {
+                        if (isAuthenticated) {
+                            showProfileMenu = true
+                        } else {
+                            onProfileClick()
+                        }
+                    }) {
+                        Icon(
+                            Icons.Default.AccountCircle,
+                            contentDescription = "Cuenta",
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showProfileMenu,
+                        onDismissRequest = { showProfileMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Ir al perfil") },
+                            onClick = {
+                                showProfileMenu = false
+                                onProfileClick()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Cerrar sesión", color = MaterialTheme.colorScheme.error) },
+                            onClick = {
+                                showProfileMenu = false
+                                onLogoutClick()
+                            }
+                        )
+                    }
                 }
             }
         },
@@ -422,6 +467,7 @@ fun MainTopAppBar(
                     IconButton(onClick = onSearchClick) {
                         Icon(Icons.Default.Search, "Buscar")
                     }
+                    // Ahora el botón solo lanza la acción para abrir el BottomSheet
                     IconButton(onClick = onNotificationsClick) {
                         Icon(Icons.Default.Notifications, "Notificaciones")
                     }
@@ -447,30 +493,32 @@ fun MainTabsScreen(
     val tabsNavController = rememberNavController()
     val navBackStackEntry by tabsNavController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Routes.HOME
-    var showNotifications by remember { mutableStateOf(false) }
+
+    // 🔥 ESTADO DE NOTIFICACIONES
+    var showNotificationsSheet by remember { mutableStateOf(false) }
+
     var showAddFriend by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val exploreViewModel: ExploreViewModel = viewModel()
+
+    val notificationViewModel: NotificationViewModel = viewModel()
+
     val currentAuthState by authViewModel.authState.collectAsState()
     var showLoginDialog by remember { mutableStateOf(false) }
-
     var scrollOffset by remember { mutableFloatStateOf(0f) }
     var isCollapsed by remember { mutableStateOf(false) }
     var hideBottomBar by remember { mutableStateOf(false) }
 
-    // 🔥 VALORES RESPONSIVOS BASADOS EN EL TAMAÑO DE PANTALLA
     val bottomBarPadding = when (windowSizeClass) {
         WindowWidthSizeClass.Compact -> 16.dp
         WindowWidthSizeClass.Medium -> 24.dp
         else -> 32.dp
     }
-
     val bottomBarIconSize = when (windowSizeClass) {
         WindowWidthSizeClass.Compact -> 20.dp
         WindowWidthSizeClass.Medium -> 22.dp
         else -> 24.dp
     }
-
     val bottomBarTextSize = when (windowSizeClass) {
         WindowWidthSizeClass.Compact -> 10.sp
         WindowWidthSizeClass.Medium -> 11.sp
@@ -491,27 +539,21 @@ fun MainTabsScreen(
                 source: NestedScrollSource
             ): Offset {
                 scrollOffset -= consumed.y
-
                 if (available.y > 0f && consumed.y == 0f) {
                     scrollOffset = 0f
                 }
-
                 scrollOffset = scrollOffset.coerceAtLeast(0f)
-
                 if (scrollOffset <= 5f) {
                     isCollapsed = false
                 } else if (scrollOffset > 40f) {
                     isCollapsed = true
                 }
-
                 if (available.y < -0.1f) {
                     hideBottomBar = true
                 }
-
                 if (consumed.y > 0f || available.y > 0f) {
                     hideBottomBar = false
                 }
-
                 return Offset.Zero
             }
         }
@@ -609,7 +651,6 @@ fun MainTabsScreen(
                     }
                 )
             }
-
             composable(Routes.EXPLORE) {
                 ExploreScreen(
                     viewModel = exploreViewModel,
@@ -631,7 +672,6 @@ fun MainTabsScreen(
                     navController = rootNavController
                 )
             }
-
             composable(Routes.MAS) {
                 MoreScreen(
                     authViewModel = authViewModel,
@@ -647,28 +687,32 @@ fun MainTabsScreen(
         }
 
         if (currentRoute != Routes.MAS) {
-        MainTopAppBar(
-            currentRoute = currentRoute,
-            isCollapsed = isCollapsed,
-            onSearchClick = { rootNavController.navigate(Routes.SEARCH) },
-            onNotificationsClick = { showNotifications = !showNotifications },
-            onAccountClick = {
-                if (currentAuthState is AuthViewModel.AuthState.Authenticated) {
-                    tabsNavController.navigate(Routes.MAS)
-                } else {
-                    showLoginDialog = true
-                }
-            },
-            onAddFriendClick = { showAddFriend = !showAddFriend },
-            showAddFriend = showAddFriend,
-            windowSizeClass = windowSizeClass,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-        )
+            MainTopAppBar(
+                currentRoute = currentRoute,
+                isCollapsed = isCollapsed,
+                isAuthenticated = currentAuthState is AuthViewModel.AuthState.Authenticated,
+                onSearchClick = { rootNavController.navigate(Routes.SEARCH) },
+                onNotificationsClick = { showNotificationsSheet = true }, // 🔥 ABRE EL BOTTOM SHEET
+                onProfileClick = {
+                    if (currentAuthState is AuthViewModel.AuthState.Authenticated) {
+                        rootNavController.navigate(Routes.PROFILE)
+                    } else {
+                        showLoginDialog = true
+                    }
+                },
+                onLogoutClick = {
+                    authViewModel.logout()
+                    rootNavController.navigate(Routes.LOGIN)
+                },
+                onAddFriendClick = { showAddFriend = !showAddFriend },
+                showAddFriend = showAddFriend,
+                windowSizeClass = windowSizeClass,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+            )
         }
 
-        // 🔥 PASTILLA RESPONSIVA
         AnimatedVisibility(
             visible = !hideBottomBar,
             enter = slideInVertically(tween(300)) { it } + fadeIn(tween(300)),
@@ -759,11 +803,10 @@ fun MainTabsScreen(
             }
         }
 
-        if (showNotifications) {
-            NotificationDropdown(
-                expanded = showNotifications,
-                onDismiss = { showNotifications = false },
-                windowSizeClass = windowSizeClass
+        if (showNotificationsSheet) {
+            NotificationBottomSheet(
+                viewModel = notificationViewModel,
+                onDismiss = { showNotificationsSheet = false }
             )
         }
 
@@ -797,44 +840,154 @@ fun MainTabsScreen(
     }
 }
 
+data class NotificationItem(
+    val title: String,
+    val description: String,
+    val icon: ImageVector,
+    val color: Color,
+    val time: String,
+    val imageUrl: String? = null
+)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NotificationDropdown(
-    expanded: Boolean,
-    onDismiss: () -> Unit,
-    windowSizeClass: WindowWidthSizeClass
+fun NotificationBottomSheet(
+    viewModel: NotificationViewModel,
+    onDismiss: () -> Unit
 ) {
-    // 🔥 ANCHO RESPONSIVO
-    val maxWidth = when (windowSizeClass) {
-        WindowWidthSizeClass.Compact -> 260.dp
-        WindowWidthSizeClass.Medium -> 300.dp
-        else -> 340.dp
-    }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
 
-    DropdownMenu(
-        expanded = expanded,
+    val notificationsList by viewModel.notifications.collectAsState()
+
+    val context = LocalContext.current
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        modifier = Modifier
-            .widthIn(max = maxWidth)
-            .background(MaterialTheme.colorScheme.surface)
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp)
         ) {
-            Text("Notificaciones", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            Spacer(modifier = Modifier.height(24.dp))
-            Icon(
-                imageVector = Icons.Default.NotificationsOff,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
-                modifier = Modifier.size(48.dp)
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            Text("No tienes ninguna notificación.", fontSize = 14.sp, textAlign = TextAlign.Center)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Notificaciones",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp
+                )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = {
+                        val libraryMangas = com.example.shioriapp.data.repository.LibraryManager.library.value
+                        if (libraryMangas.isEmpty()) {
+                            android.widget.Toast.makeText(context, "Agrega primero mangas a tu biblioteca para probar", android.widget.Toast.LENGTH_LONG).show()
+                        } else {
+                            viewModel.checkLibraryUpdates(libraryMangas)
+                        }
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.BugReport,
+                            contentDescription = "Comprobar actualizaciones de la biblioteca",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider()
+            if (notificationsList.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(200.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.NotificationsOff,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = Color.Gray
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Todo al día", fontSize = 16.sp, color = Color.Gray)
+                    }
+                }
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                    items(notificationsList) { notif ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onDismiss() }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(notif.color.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (notif.imageUrl != null) {
+                                    // 🔥 Si hay imagen, mostramos la carátula
+                                    AsyncImage(
+                                        model = notif.imageUrl,
+                                        contentDescription = "Portada de ${notif.title}",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = notif.icon,
+                                        contentDescription = null,
+                                        tint = notif.color,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = notif.title,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = notif.time,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = notif.description,
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                    }
+                }
+            }
         }
     }
 }
-
 private fun safeUrlDecode(encoded: String): String {
     return try {
         URLDecoder.decode(encoded, "UTF-8")

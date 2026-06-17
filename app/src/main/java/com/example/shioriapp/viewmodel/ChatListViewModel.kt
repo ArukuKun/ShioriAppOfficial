@@ -29,8 +29,10 @@ class ChatListViewModel(private val userId: String) : ViewModel() {
     private val _searchResults = MutableStateFlow<List<UserProfile>>(emptyList())
     val searchResults: StateFlow<List<UserProfile>> = _searchResults.asStateFlow()
 
+    private val _pendingRequests = MutableStateFlow<Set<String>>(emptySet())
+    val pendingRequests: StateFlow<Set<String>> = _pendingRequests.asStateFlow()
+
     init {
-        // Observar Perfil de Usuario para cambios en amigos y solicitudes
         viewModelScope.launch {
             userManager.observeUserProfile(userId).collectLatest { profile ->
                 profile?.let {
@@ -42,7 +44,6 @@ class ChatListViewModel(private val userId: String) : ViewModel() {
             }
         }
 
-        // Observar Chats
         viewModelScope.launch {
             chatRepository.getUserChats(userId).collectLatest { chats ->
                 val enrichedChats = chats.map { chat ->
@@ -70,16 +71,22 @@ class ChatListViewModel(private val userId: String) : ViewModel() {
     }
 
     fun sendFriendRequest(toUserId: String) {
+        if (_pendingRequests.value.contains(toUserId)) return
+
         viewModelScope.launch {
-            userManager.sendFriendRequest(userId, toUserId)
-            // Ya no es necesario llamar a loadFriendsAndRequests() porque observeUserProfile se encarga
+            _pendingRequests.value = _pendingRequests.value + toUserId
+
+            try {
+                userManager.sendFriendRequest(userId, toUserId)
+            } catch (e: Exception) {
+                _pendingRequests.value = _pendingRequests.value - toUserId
+            }
         }
     }
 
     fun acceptFriendRequest(fromUserId: String) {
         viewModelScope.launch {
             userManager.acceptFriendRequest(userId, fromUserId)
-            // Ya no es necesario llamar a loadFriendsAndRequests() porque observeUserProfile se encarga
         }
     }
 
