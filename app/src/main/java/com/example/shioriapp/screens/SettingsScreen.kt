@@ -20,7 +20,8 @@ import androidx.compose.ui.unit.sp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNavigateToAppearance: () -> Unit
 ) {
     val isDarkMode = isSystemInDarkTheme()
 
@@ -53,7 +54,8 @@ fun SettingsScreen(
             SettingsItem(
                 icon = Icons.Default.ColorLens,
                 title = "Apariencia",
-                subtitle = if (isDarkMode) "Tema actual: Oscuro" else "Tema actual: Claro"
+                subtitle = if (isDarkMode) "Tema actual: Oscuro" else "Tema actual: Claro",
+                onClick = { onNavigateToAppearance() }
             )
             SettingsItem(
                 icon = Icons.Default.Language,

@@ -11,6 +11,9 @@ android {
     namespace = "com.example.shioriapp"
     compileSdk = 35
 
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
     defaultConfig {
         applicationId = "com.example.shioriapp"
         minSdk = 24
@@ -89,6 +92,11 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("io.mockk:mockk:1.13.8")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)

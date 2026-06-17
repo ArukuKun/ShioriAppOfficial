@@ -43,26 +43,35 @@ class UserManager(private val firestore: FirebaseFirestore) {
         return snapshot.documents.mapNotNull { it.toObject(UserProfile::class.java) }
     }
 
+    // ACTUALIZADO: Prevenir duplicados al enviar solicitudes
     suspend fun sendFriendRequest(fromUserId: String, toUserId: String) {
         val fromUser = getUserProfile(fromUserId) ?: return
         val toUser = getUserProfile(toUserId) ?: return
-        // Actualizar ambos
-        val updatedFrom = fromUser.copy(friendRequestsSent = fromUser.friendRequestsSent + toUserId)
-        val updatedTo = toUser.copy(friendRequestsReceived = toUser.friendRequestsReceived + fromUserId)
+
+        // Usamos .distinct() para asegurar que la lista final no tenga el mismo ID más de una vez
+        val updatedFrom = fromUser.copy(
+            friendRequestsSent = (fromUser.friendRequestsSent + toUserId).distinct()
+        )
+        val updatedTo = toUser.copy(
+            friendRequestsReceived = (toUser.friendRequestsReceived + fromUserId).distinct()
+        )
         createOrUpdateUserProfile(fromUserId, updatedFrom)
         createOrUpdateUserProfile(toUserId, updatedTo)
     }
 
+    // ACTUALIZADO: Limpiar TODOS los duplicados si ya existen al aceptar
     suspend fun acceptFriendRequest(currentUserId: String, requesterId: String) {
         val current = getUserProfile(currentUserId) ?: return
         val requester = getUserProfile(requesterId) ?: return
+
+        // Usamos filterNot para asegurarnos de barrer con todas las copias del ID defectuoso
         val newCurrent = current.copy(
-            friendRequestsReceived = current.friendRequestsReceived - requesterId,
-            friends = current.friends + requesterId
+            friendRequestsReceived = current.friendRequestsReceived.filterNot { it == requesterId },
+            friends = (current.friends + requesterId).distinct()
         )
         val newRequester = requester.copy(
-            friendRequestsSent = requester.friendRequestsSent - currentUserId,
-            friends = requester.friends + currentUserId
+            friendRequestsSent = requester.friendRequestsSent.filterNot { it == currentUserId },
+            friends = (requester.friends + currentUserId).distinct()
         )
         createOrUpdateUserProfile(currentUserId, newCurrent)
         createOrUpdateUserProfile(requesterId, newRequester)
@@ -100,10 +109,6 @@ class UserManager(private val firestore: FirebaseFirestore) {
                 mangaInterests = if (mangaInterests.isNotEmpty()) mangaInterests else userProfile.mangaInterests
             )
             createOrUpdateUserProfile(userId, updatedProfile)
-            
-            // Si estuviéramos usando un sistema donde el nombre y foto se guardan en el chat/mensaje directamente, 
-            // habría que actualizarlos aquí. Afortunadamente en tu sistema, la UI obtiene la foto y nombre leyendo 
-            // la lista de "amigos" de Firestore, así que al actualizar el UserProfile ya se reflejará en la UI de todos.
         } catch (e: Exception) {
             android.util.Log.e("UserManager", "Error updating profile", e)
         }
